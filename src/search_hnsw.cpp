@@ -141,10 +141,10 @@ int main(int argc, char * argv[]) {
                 if(optarg)subk = atoi(optarg);
                 break;
             case 'e':
-                if(optarg)adsampling::epsilon0 = atof(optarg);
+                if(optarg) adsampling::epsilon0 = atof(optarg);
                 break;
             case 'p':
-                if(optarg)adsampling::delta_d = atoi(optarg);
+                if(optarg) adsampling::delta_d = atoi(optarg);
                 break;
             case 'i':
                 if(optarg)strcpy(index_path, optarg);
@@ -165,9 +165,7 @@ int main(int argc, char * argv[]) {
                 if(optarg)strcpy(dataset, optarg);
                 break;
         }
-    }
-
-    
+    }   
     
     Matrix<float> Q(query_path);
     Matrix<unsigned> G(groundtruth_path);
