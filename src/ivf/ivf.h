@@ -93,12 +93,12 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive){
         }
     }
 
-    if(adaptive == 1)d = 32;        // IVF++ - optimize cache (d = 32 by default)
+    if(adaptive == 1) d = 32;       // IVF++ - optimize cache (d = 32 by default)
     else if(adaptive == 0) d = D;   // IVF   - plain scan
     else d = 0;                     // IVF+  - plain ADSampling        
 
-    L1_data   = new float [N * d + 1];
-    res_data  = new float [N * (D - d) + 1];
+    L1_data   = new float [N * d + 10];
+    res_data  = new float [N * (D - d) + 10];
     centroids = new float [C * D];
     
     for(int i=0;i<N;i++){
@@ -145,7 +145,7 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     size_t ncan = 0;
     for(int i=0;i<nprobe;i++)
         ncan += len[centroid_dist[i].second];
-    if(d == D)adsampling::tot_dimension += 1ll * ncan * D;
+    if(d == D) adsampling::tot_dimension += 1ll * ncan * D;
     float * dist = new float [ncan];
     Result * candidates = new Result [ncan];
     int * obj= new int [ncan];
@@ -166,8 +166,8 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
 #ifdef COUNT_DIST_TIME
             adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif      
-            if(d > 0)dist[cur] = tmp_dist;
-            else dist[cur] = 0;
+            if(d > 0) dist[cur] = tmp_dist; // IVF++ or IVF
+            else dist[cur] = 0; // IVF+  - plain ADSampling
             obj[cur] = can;
             cur ++;
         }    
@@ -182,14 +182,12 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
         }
         std::partial_sort(candidates, candidates + k, candidates + ncan);
         
-        for(int i=0;i<k;i++){
+        for(int i=0;i < k;i++){
             KNNs.emplace(candidates[i].first, candidates[i].second);
         }
-    }
-    // d < D indicates ADSampling with and without cache-level optimization
-    if(d < D){
+    } else if(d < D) {  // d < D indicates ADSampling with and without cache-level optimization
         auto cur_dist = dist;
-        for(int i=0;i<nprobe;i++){
+        for(int i = 0;i < nprobe;i++){
             int cluster_id = centroid_dist[i].second;
             for(int j=0;j<len[cluster_id];j++){
                 size_t can = start[cluster_id] + j;

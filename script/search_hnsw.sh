@@ -1,5 +1,4 @@
 
-
 cd ..
 
 g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/

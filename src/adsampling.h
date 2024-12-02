@@ -35,7 +35,7 @@ void clear(){
 // The hypothesis testing checks whether \sqrt{D/d} dis' > (1 +  epsilon0 / \sqrt{d}) * r.
 // We equivalently check whether dis' > \sqrt{d/D} * (1 +  epsilon0 / \sqrt{d}) * r.
 inline float ratio(const int &D, const int &i){
-    if(i == D)return 1.0;
+    if(i == D) return 1.0;
     return 1.0 * i / D * (1.0 + epsilon0 / std::sqrt(i)) * (1.0 + epsilon0 / std::sqrt(i));
 }    
 

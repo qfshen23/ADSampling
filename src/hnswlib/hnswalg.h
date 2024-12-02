@@ -415,7 +415,8 @@ namespace hnswlib {
                         cnt_visit ++;
                         visited_array[candidate_id] = visited_array_tag;
 
-                        // If the result set is not full, then calculate the exact distance. (i.e., assume the distance threshold to be infinity)
+                        // If the result set is not full, then calculate the exact distance. 
+                        // (i.e., assume the distance threshold to be infinity)
                         if (top_candidates.size() < ef){
                             char *currObj1 = (getDataByInternalId(candidate_id));
 #ifdef COUNT_DIST_TIME
@@ -1383,7 +1384,7 @@ namespace hnswlib {
             return cur_c;
         };
 
-        //max heap
+        // max heap
         std::priority_queue<std::pair<dist_t, labeltype >>
         searchKnn(void *query_data, size_t k, int adaptive=0) const {
             
@@ -1450,7 +1451,7 @@ namespace hnswlib {
                     }
                 }
             }
-            //max heap
+            // max heap
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
             
             if (num_deleted_) {
