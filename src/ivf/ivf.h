@@ -11,11 +11,13 @@ We explain the important variables for the enhanced IVF as follows.
 3. res_data - The array to store the remaining dimensions of a vector.
 
 */
+#include <omp.h>
 #include <limits>
 #include <queue>
 #include <vector>
 #include <algorithm>
 #include <map>
+#include <mutex>
 
 #include "adsampling.h"
 #include "matrix.h"
@@ -53,65 +55,167 @@ IVF::IVF(){
     L1_data = res_data = centroids = NULL;
 }
 
-IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive){
+IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) {
     
     N = X.n;
     D = X.d;
     C = _centroids.n;
     
-    assert(D > 32);
+    assert(D >= 32);
     start = new size_t [C];
     len   = new size_t [C];
     id    = new size_t [N];
 
-    std::vector<size_t> * temp = new std::vector<size_t> [C];
-    
-    for(int i=0;i<X.n;i++){
-        int belong = 0;
-        float dist_min = X.dist(i, _centroids, 0);
-        for(int j=1;j<C;j++){
-            float dist = X.dist(i, _centroids, j);
-            if(dist < dist_min){
-                dist_min = dist;
-                belong = j;
+    int num_threads = 32;
+    // thread_temp[t*C + c] 表示第 t 个线程负责的第 c 个簇
+    std::vector<std::vector<size_t>> thread_temp(num_threads * C);
+
+    // 并行处理每个点找所属簇
+    #pragma omp parallel
+    {
+        int tid = omp_get_thread_num();  // 当前线程 ID
+        #pragma omp for
+        for(int i = 0; i < X.n; i++){
+            int belong = 0;
+            float dist_min = X.dist(i, _centroids, 0);
+            // 找到最小距离的簇
+            for(int j = 1; j < C; j++){
+                float dist = X.dist(i, _centroids, j);
+                if(dist < dist_min){
+                    dist_min = dist;
+                    belong = j;
+                }
+            }
+            // 将索引 i 放入 thread_temp[tid*C + belong]
+            thread_temp[tid*C + belong].push_back(i);
+
+            // （可选）输出进度：因为这里会被多线程调用，谨慎使用
+            if(i % 50000 == 0) {
+                #pragma omp critical
+                {
+                    std::cerr << "[Thread " << tid << "] Processing - " 
+                              << i << " / " << X.n << std::endl;
+                }
             }
         }
-        if(i % 50000 == 0){
-            std::cerr << "Processing - " << i << " / " << X.n  << std::endl;
-        }
-        temp[belong].push_back(i);
     }
     std::cerr << "Cluster Generated!" << std::endl;
 
+    // 将所有线程的临时结果合并到一个最终的 temp 结构中
+    // 先用单线程合并，以免再次加锁
+    std::vector<std::vector<size_t>> temp(C); 
+    for(int t = 0; t < num_threads; t++){
+        for(int c = 0; c < (int)C; c++){
+            // 合并 thread_temp[t*C + c] 到 temp[c]
+            auto &src = thread_temp[t*C + c];
+            temp[c].insert(temp[c].end(), src.begin(), src.end());
+        }
+    }
+    // 至此，temp[c] 就包含了所有属于第 c 个簇的样本索引
+
+    // ------------------------------
+    //  2) 统计每个簇的长度，并写入 id[]
+    // ------------------------------
     size_t sum = 0;
-    for(int i=0;i<C;i++){
-        len[i] = temp[i].size();
+    for(int i = 0; i < (int)C; i++){
+        len[i]   = temp[i].size();
         start[i] = sum;
-        sum += len[i];
-        for(int j=0;j<len[i];j++){
-            id[start[i] + j] = temp[i][j];
+        sum     += len[i];
+    }
+
+    // 并行写 id[]（可选，如果数据量很大，可以并行化）
+    #pragma omp parallel for
+    for(int i = 0; i < (int)C; i++){
+        size_t offset = start[i];
+        for(size_t j = 0; j < len[i]; j++){
+            id[offset + j] = temp[i][j];
         }
     }
 
-    if(adaptive == 1) d = 32;       // IVF++ - optimize cache (d = 32 by default)
-    else if(adaptive == 0) d = D;   // IVF   - plain scan
-    else d = 0;                     // IVF+  - plain ADSampling        
+    // ------------------------------
+    //  3) 根据 adaptive 参数确定分块维度 d
+    // ------------------------------
+    if(adaptive == 1)      d = 480;  // IVF++ - optimize cache (d = 32 by default)
+    else if(adaptive == 0) d = D;    // IVF   - plain scan
+    else                   d = 0;    // IVF+  - plain ADSampling
 
-    L1_data   = new float [N * d + 10];
-    res_data  = new float [N * (D - d) + 10];
-    centroids = new float [C * D];
-    
-    for(int i=0;i<N;i++){
+    L1_data   = new float[N * d + 10];       // +10 可防越界（原代码如此）
+    res_data  = new float[N * (D - d) + 10];
+    centroids = new float[C * D];
+
+    // ------------------------------
+    //  4) 并行填充 L1_data 和 res_data
+    // ------------------------------
+    // 这里可以并行，因为每个 i 都独立地写入
+    #pragma omp parallel for
+    for(int i = 0; i < (int)N; i++){
         int x = id[i];
-        for(int j=0;j<D;j++){
-            if(j < d) L1_data[i * d + j] = X.data[x * D + j];
-            else res_data[i * (D-d) + j - d] = X.data[x * D + j];
+        // 拷贝前 d 维到 L1_data，剩余 D-d 维到 res_data
+        for(int j = 0; j < (int)D; j++){
+            if(j < d) {
+                L1_data[i * d + j] = X.data[x * D + j];
+            } else {
+                res_data[i * (D - d) + (j - d)] = X.data[x * D + j];
+            }
         }
     }
 
+    // ------------------------------
+    //  5) 拷贝聚类中心
+    // ------------------------------
     std::memcpy(centroids, _centroids.data, C * D * sizeof(float));
-    delete [] temp;
 
+    // 不要忘了释放 thread_temp 原来的内存（vector 的自动清理也可以）
+    // 如果你要继续使用 temp，就不要释放
+    temp.clear();
+
+    // std::vector<size_t> * temp = new std::vector<size_t> [C];
+
+    // for(int i=0;i<X.n;i++){
+    //     int belong = 0;
+    //     float dist_min = X.dist(i, _centroids, 0);
+    //     for(int j=1;j<C;j++){
+    //         float dist = X.dist(i, _centroids, j);
+    //         if(dist < dist_min){
+    //             dist_min = dist;
+    //             belong = j;
+    //         }
+    //     }
+    //     if(i % 50000 == 0){
+    //         std::cerr << "Processing - " << i << " / " << X.n  << std::endl;
+    //     }
+    //     temp[belong].push_back(i);
+    // }
+    // std::cerr << "Cluster Generated!" << std::endl;
+
+    // size_t sum = 0;
+    // for(int i=0;i<C;i++){
+    //     len[i] = temp[i].size();
+    //     start[i] = sum;
+    //     sum += len[i];
+    //     for(int j=0;j<len[i];j++){
+    //         id[start[i] + j] = temp[i][j];
+    //     }
+    // }
+
+    // if(adaptive == 1) d = 240;       // IVF++ - optimize cache (d = 32 by default)
+    // else if(adaptive == 0) d = D;   // IVF   - plain scan
+    // else d = 0;                     // IVF+  - plain ADSampling        
+
+    // L1_data   = new float [N * d + 10];
+    // res_data  = new float [N * (D - d) + 10];
+    // centroids = new float [C * D];
+    
+    // for(int i=0;i<N;i++){
+    //     int x = id[i];
+    //     for(int j=0;j<D;j++){
+    //         if(j < d) L1_data[i * d + j] = X.data[x * D + j];
+    //         else res_data[i * (D-d) + j - d] = X.data[x * D + j];
+    //     }
+    // }
+
+    // std::memcpy(centroids, _centroids.data, C * D * sizeof(float));
+    // delete [] temp;
 }
 
 IVF::~IVF(){
@@ -175,7 +279,7 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     ResultHeap KNNs;
 
     // d == D indicates FDScanning. 
-    if(d == D){ 
+    if(d > 0){  // here, it should originally be d == D
         for(int i=0;i<ncan;i++){
             candidates[i].first = dist[i];
             candidates[i].second = id[obj[i]];

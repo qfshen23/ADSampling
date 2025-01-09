@@ -1,8 +1,9 @@
 cd ..
-g++ -o ./src/index_ivf ./src/index_ivf.cpp -I ./src/ -I /usr/include/eigen3 -O3
-
+g++ -fopenmp -O3 ./src/index_ivf.cpp -o ./src/index_ivf  -I ./src/ -I /usr/include/eigen3 
 C=4096
-datasets=('sift' 'gist' 'deep1M')
+datasets=('gist')
+
+prop=50
 
 for data in "${datasets[@]}"
 do  
@@ -33,7 +34,7 @@ do
         fi
 
         # 0 - IVF, 1 - IVF++, 2 - IVF+
-        index_file="${index_path}/${data}_ivf_${C}_${adaptive}.index"
+        index_file="${index_path}/${data}_ivf_${C}_${adaptive}_${prop}.index"
 
         echo $index_file
 
