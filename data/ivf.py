@@ -4,8 +4,8 @@ import faiss
 import struct
 import os
 
-source = './'
-datasets = ['gist']
+source = '/data/vector_datasets/'
+datasets = ['gist' , 'sift', 'deep1M']
 # the number of clusters
 K = 4096 
 
@@ -47,16 +47,18 @@ if __name__ == '__main__':
         # read data vectors
         X = read_fvecs(data_path)
         P = read_fvecs(transformation_path)
-
+        C = read_fvecs(centroids_path)
         D = X.shape[1]
         
+        '''
         # cluster data vectors
         index = faiss.index_factory(D, f"IVF{K},Flat")
         index.verbose = True
         index.train(X)
         centroids = index.quantizer.reconstruct_n(0, index.nlist)
         to_fvecs(centroids_path, centroids)
+        '''
 
         # randomized centroids
-        centroids = np.dot(centroids, P)
+        centroids = np.dot(C, P)
         to_fvecs(randomzized_cluster_path, centroids)
