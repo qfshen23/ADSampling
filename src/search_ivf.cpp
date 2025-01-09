@@ -82,11 +82,12 @@ int main(int argc, char * argv[]) {
         {"groundtruth_path",            required_argument, 0, 'g'},
         {"result_path",                 required_argument, 0, 'r'},
         {"transformation_path",         required_argument, 0, 't'},
+        {"propotion",                   required_argument, 0, 'a'},
     };
 
     int ind;
     int iarg = 0;
-    opterr = 1;    //getopt error message (off: 0)
+    opterr = 1;    // getopt error message (off: 0)
 
     char index_path[256] = "";
     char query_path[256] = "";
@@ -139,8 +140,7 @@ int main(int argc, char * argv[]) {
     Matrix<float> Q(query_path);
     Matrix<unsigned> G(groundtruth_path);
     
-    
-    freopen(result_path,"a",stdout);
+    freopen(result_path, "a", stdout);
 
     if(randomize) {
         Matrix<float> P(transformation_path);

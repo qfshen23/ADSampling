@@ -1,13 +1,14 @@
 
 cd ..
-g++ ./src/search_ivf.cpp -O3 -mavx -o ./src/search_ivf -I ./src/ -I /usr/include/eigen3
+g++ ./src/search_ivf.cpp -O3 -mavx -o ./src/search_ivf -I ./src/ -I /usr/include/eigen3 -fopenmp
 
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results
-datasets=('sift' 'gist' 'deep1M')
+datasets=('gist')   
 C=4096
 K=100
+prop=50
 
 for data in "${datasets[@]}"
 do
@@ -32,7 +33,7 @@ do
         fi
 
         res="${result_path}/${data}_IVF${C}_${randomize}.log"
-        index="${index_path}/${data}/${data}_ivf_${C}_${randomize}.index"
+        index="${index_path}/${data}/${data}_ivf_${C}_${randomize}_${prop}.index"
         query="${path}/${data}/${data}_query.fvecs"
         gnd="${path}/${data}/${data}_groundtruth.ivecs"
         trans="${path}/${data}/O.fvecs"
