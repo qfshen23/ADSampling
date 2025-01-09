@@ -25,7 +25,12 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     struct rusage run_start, run_end;
 
     vector<int> nprobes;
+    nprobes.push_back(10);
+    nprobes.push_back(20);
+    nprobes.push_back(50);
+    nprobes.push_back(80);
     nprobes.push_back(100);
+    nprobes.push_back(200);
     
     for(auto nprobe:nprobes){
         total_time=0;
@@ -43,14 +48,18 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
                 int id = KNNs.top().second;
                 KNNs.pop();
                 for(int j=0;j<k;j++)
-                    if(id == G.data[i * G.d + j])correct ++;
+                    if(id == G.data[i * G.d + j]) correct ++;
             }
         }
         float time_us_per_query = total_time / Q.n + rotation_time;
         float recall = 1.0f * correct / (Q.n * k);
         
         // (Search Parameter, Recall, Average Time/Query(us), Total Dimensionality)
-        cout << nprobe << " " << recall * 100.00 << " " << time_us_per_query << " " << adsampling::tot_dimension << endl;
+        cout << "---------------ADSampling------------------------" << endl;
+        cout << "nprobe = " << nprobe << " k = " << k <<  endl;
+        cout << "Recall = " << recall * 100.000 << "%\t" << endl;
+        cout << "Time = " << time_us_per_query << " us \t QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
+        // cout << "time1 = " << adsampling::time1 << " time2 = " << adsampling::time2 << endl;
     }
 }
 
@@ -86,8 +95,8 @@ int main(int argc, char * argv[]) {
     char dataset[256] = "";
     char transformation_path[256] = "";
 
-    int randomize = 0;
-    int subk = 0;
+    int randomize = 1;
+    int subk = 100;
 
     while(iarg != -1){
         iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:", longopts, &ind);
@@ -96,7 +105,7 @@ int main(int argc, char * argv[]) {
                 if(optarg)randomize = atoi(optarg);
                 break;
             case 'k':
-                if(optarg)subk = atoi(optarg);
+                if(optarg) subk = atoi(optarg);
                 break;  
             case 'e':
                 if(optarg)adsampling::epsilon0 = atof(optarg);
@@ -124,13 +133,17 @@ int main(int argc, char * argv[]) {
                 break;
         }
     }
+
+    cerr << "K: " << subk << endl;
     
     Matrix<float> Q(query_path);
     Matrix<unsigned> G(groundtruth_path);
-    Matrix<float> P(transformation_path);
+    
     
     freopen(result_path,"a",stdout);
-    if(randomize){
+
+    if(randomize) {
+        Matrix<float> P(transformation_path);
         StopW stopw = StopW();
         Q = mul(Q, P);
         rotation_time = stopw.getElapsedTimeMicro() / Q.n;
