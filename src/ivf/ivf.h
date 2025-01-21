@@ -18,6 +18,7 @@ We explain the important variables for the enhanced IVF as follows.
 #include <algorithm>
 #include <map>
 #include <mutex>
+#include <random>
 
 #include "adsampling.h"
 #include "matrix.h"
@@ -135,7 +136,7 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) 
     // ------------------------------
     //  3) 根据 adaptive 参数确定分块维度 d
     // ------------------------------
-    if(adaptive == 1)      d = 480;  // IVF++ - optimize cache (d = 32 by default)
+    if(adaptive == 1)      d = 64;  // IVF++ - optimize cache (d = 32 by default)
     else if(adaptive == 0) d = D;    // IVF   - plain scan
     else                   d = 0;    // IVF+  - plain ADSampling
 
@@ -228,15 +229,21 @@ IVF::~IVF(){
 }
 
 ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const{
+    // unsigned int seed = 123456;
+    // std::mt19937 rng(seed);
+    random_device rd;
+    std::mt19937 rng(rd());
+    std::uniform_real_distribution<float> random_dist(0.0, 1.0);
     // the default value of distK is +inf 
     Result* centroid_dist = new Result [C];
 
+    StopW stopw = StopW();
     // Find out the closest N_{probe} centroids to the query vector.
     for(int i=0;i<C;i++){
 #ifdef COUNT_DIST_TIME
         StopW stopw = StopW();
 #endif
-        centroid_dist[i].first = sqr_dist(query, centroids+i*D, D);
+        centroid_dist[i].first = sqr_dist(query, centroids + i * D, D);
 #ifdef COUNT_DIST_TIME
         adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif               
@@ -245,56 +252,120 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
 
     // Find out the closest N_{probe} centroids to the query vector.
     std::partial_sort(centroid_dist, centroid_dist + nprobe, centroid_dist + C);
+
+    adsampling::time1 += stopw.getElapsedTimeMicro();
     
     size_t ncan = 0;
     for(int i=0;i<nprobe;i++)
         ncan += len[centroid_dist[i].second];
     if(d == D) adsampling::tot_dimension += 1ll * ncan * D;
+
     float * dist = new float [ncan];
     Result * candidates = new Result [ncan];
     int * obj= new int [ncan];
+    // bool * flag = new bool [ncan];
+    
+    size_t cur = 0;
+    // for(int i=0;i<nprobe;i++){
+    //     int cluster_id = centroid_dist[i].second;
+    //     for(int j=0;j<len[cluster_id];j++){
+    //         float r = random_dist(rng);
+    //         flag[cur] = (r <= 0.75);
+    //         cur ++;
+    //     }    
+    // }
+
+    // std::vector<size_t> cand;
+    // cand.reserve(ncan);
+    // for (size_t i = 0; i < nprobe; i++) {
+    //     int cluster_id = centroid_dist[i].second;
+    //     for (size_t j = 0; j < len[cluster_id]; j++) {
+    //         cand.push_back(start[cluster_id] + j);
+    //     }
+    // }
+
+    // std::random_device rd;
+    // std::mt19937 g(rd());
+    // std::shuffle(cand.begin(), cand.end(), g);
+
+    stopw = StopW();
+
+    // size_t tmp_size = (size_t)(cand.size() * 0.75);
+    // for (size_t i = 0; i < tmp_size; i++) {
+    //     size_t can = cand[i];
+    //     float tmp_dist = sqr_dist(query, L1_data + can * d, d);
+    //     candidates[i].first = tmp_dist;
+    //     candidates[i].second = id[can];
+    // }
+
 
     // Scan a few initial dimensions and store the distances.
     // For IVF (i.e., apply FDScanning), it should be D. 
     // For IVF+ (i.e., apply ADSampling without optimizing data layout), it should be 0.
     // For IVF++ (i.e., apply ADSampling with optimizing data layout), it should be delta_d (i.e., 32). 
-    int cur = 0;
+    cur = -1;
     for(int i=0;i<nprobe;i++){
         int cluster_id = centroid_dist[i].second;
         for(int j=0;j<len[cluster_id];j++){
+             
+            // float r = random_dist(rng);
+            // bool not_process = r > 0.5;
+            // // 
+            // if(not_process) {
+            //     continue;
+            // }
+
+            float r = random_dist(rng);
+            // flag[cur] = (r <= 0.75);
+            if(r >= 0.75) continue;
+
+            cur++;
+
             size_t can = start[cluster_id] + j;
+
+            // StopW stopw3 = StopW();
+            
 #ifdef COUNT_DIST_TIME
             StopW stopw = StopW();
 #endif
-            float tmp_dist = sqr_dist(query, L1_data + can * d, d);
+            float tmp_dist = sqr_distt(query, L1_data + can * d, d);
 #ifdef COUNT_DIST_TIME
             adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif      
+
+            // adsampling::time3 += stopw3.getElapsedTimeMicro();
+            
             if(d > 0) dist[cur] = tmp_dist; // IVF++ or IVF
             else dist[cur] = 0; // IVF+  - plain ADSampling
             obj[cur] = can;
-            cur ++;
+            candidates[cur].first = tmp_dist; // dist[cur];
+            candidates[cur].second = id[can];
         }    
     }
+
+    adsampling::cntt += cur;
+
+    adsampling::time2 += stopw.getElapsedTimeMicro();
+
     ResultHeap KNNs;
 
     // d == D indicates FDScanning. 
-    if(d > 0){  // here, it should originally be d == D
-        for(int i=0;i<ncan;i++){
-            candidates[i].first = dist[i];
-            candidates[i].second = id[obj[i]];
-        }
-        std::partial_sort(candidates, candidates + k, candidates + ncan);
+    if(d == D){  // here, it should originally be d == D
+        StopW stopw = StopW();
+        
+        std::partial_sort(candidates, candidates + k, candidates + cur);
         
         for(int i=0;i < k;i++){
             KNNs.emplace(candidates[i].first, candidates[i].second);
         }
+        adsampling::time4 += stopw.getElapsedTimeMicro();
     } else if(d < D) {  // d < D indicates ADSampling with and without cache-level optimization
         auto cur_dist = dist;
         for(int i = 0;i < nprobe;i++){
             int cluster_id = centroid_dist[i].second;
             for(int j=0;j<len[cluster_id];j++){
                 size_t can = start[cluster_id] + j;
+                
 #ifdef COUNT_DIST_TIME
                 StopW stopw = StopW();
 #endif
@@ -302,6 +373,8 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
 #ifdef COUNT_DIST_TIME
                 adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif                     
+                
+                
                 if(tmp_dist > 0){
                     KNNs.emplace(tmp_dist, id[can]);
                     if(KNNs.size() > k) KNNs.pop();
@@ -310,6 +383,7 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
                     distK = KNNs.top().first;
                 }
                 cur_dist++;
+                
             }
         }
     }
@@ -318,6 +392,7 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     delete [] dist;
     delete [] candidates;
     delete [] obj;
+    // delete [] flag;
     return KNNs;
 }
 
