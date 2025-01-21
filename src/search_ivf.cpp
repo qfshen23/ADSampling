@@ -25,11 +25,11 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     struct rusage run_start, run_end;
 
     vector<int> nprobes;
-    nprobes.push_back(10);
-    nprobes.push_back(20);
-    nprobes.push_back(50);
-    nprobes.push_back(80);
-    nprobes.push_back(100);
+    // nprobes.push_back(10);
+    // nprobes.push_back(20);
+    // nprobes.push_back(50);
+    // nprobes.push_back(80);
+    // nprobes.push_back(100);
     nprobes.push_back(200);
     
     for(auto nprobe:nprobes){
@@ -59,7 +59,12 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         cout << "nprobe = " << nprobe << " k = " << k <<  endl;
         cout << "Recall = " << recall * 100.000 << "%\t" << endl;
         cout << "Time = " << time_us_per_query << " us \t QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
-        // cout << "time1 = " << adsampling::time1 << " time2 = " << adsampling::time2 << endl;
+        // cout << "total_time: " << total_time << ", time1 = " << adsampling::time1 << " time2 = " << adsampling::time2 - adsampling::time3 << " time3 = " << adsampling::time3 << endl;
+        cout << "time1 proportion: " << adsampling::time1 / total_time * 100 << "%, time2 proportion: " << (adsampling::time2) / total_time * 100 << "%, time3 proportion: " << adsampling::time3 / total_time * 100 << ", other" << (total_time - adsampling::time1 - adsampling::time2 - adsampling::time3) / total_time * 100 << "%" << endl;
+        cout << "time1: " << adsampling::time1 << ", time2: " << adsampling::time2 << ", time3: " << adsampling::time3 << endl;
+        cout << "average count of exact distance vectors: " << adsampling::cntt / Q.n << endl;
+        cout << "average count of exact srq_dist calls: " << adsampling::dist_cnt / Q.n << endl;
+        cout << "total dimention: " << adsampling::tot_dimension << endl;
     }
 }
 
@@ -96,7 +101,7 @@ int main(int argc, char * argv[]) {
     char dataset[256] = "";
     char transformation_path[256] = "";
 
-    int randomize = 1;
+    int randomize = 0;
     int subk = 100;
 
     while(iarg != -1){
@@ -134,8 +139,6 @@ int main(int argc, char * argv[]) {
                 break;
         }
     }
-
-    cerr << "K: " << subk << endl;
     
     Matrix<float> Q(query_path);
     Matrix<unsigned> G(groundtruth_path);
