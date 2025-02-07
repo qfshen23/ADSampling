@@ -22,19 +22,23 @@ unsigned int delta_d = 32; // dimension sampling for every delta_d dimensions.
 
 long double distance_time = 0;
 unsigned long long tot_dimension = 0;
+unsigned long long all_dimension = 0;
 unsigned long long tot_dist_calculation = 0;
 unsigned long long tot_full_dist = 0;
 long double time1 = 0, time2 = 0, time3 = 0, time4 = 0;
 unsigned long long cntt = 0;
 unsigned long long dist_cnt = 0;
+std::vector<float> diskK_vec;
 
 void clear(){
     distance_time = 0;
     tot_dimension = 0;
+    all_dimension = 0;
     tot_dist_calculation = 0;
     tot_full_dist = 0;
     time1 = time2 = time3 = time4 = 0;
     cntt = dist_cnt = 0;
+    diskK_vec.clear();
 }
 
 // The hypothesis testing checks whether \sqrt{D/d} dis' > (1 +  epsilon0 / \sqrt{d}) * r.

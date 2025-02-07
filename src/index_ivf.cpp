@@ -23,6 +23,7 @@ int main(int argc, char * argv[]) {
         {"data_path",                   required_argument, 0, 'd'},
         {"centroid_path",               required_argument, 0, 'c'},
         {"index_path",                  required_argument, 0, 'i'},
+        {"training_path",               required_argument, 0, 't'},
     };
 
     int ind;
@@ -32,11 +33,12 @@ int main(int argc, char * argv[]) {
     char index_path[256] = "";
     char data_path[256] = "";
     char centroid_path[256] = "";
+    char training_path[256] = "";
 
     size_t adaptive = 0;
 
     while(iarg != -1){
-        iarg = getopt_long(argc, argv, "a:d:c:i:", longopts, &ind);
+        iarg = getopt_long(argc, argv, "a:d:c:i:t:", longopts, &ind);
         switch (iarg){
             case 'a': 
                 if(optarg){
@@ -58,15 +60,25 @@ int main(int argc, char * argv[]) {
                     strcpy(index_path, optarg);
                 }
                 break;
+            case 't':
+               if(optarg){
+                    strcpy(training_path, optarg);
+                }
+                break;
         }
     }
 
 
     Matrix<float> X(data_path);
     Matrix<float> C(centroid_path);
-
-    IVF ivf(X, C, adaptive);
-    ivf.save(index_path);
+    if(strlen(training_path) > 0) {
+        Matrix<int> T(training_path);
+        IVF ivf(X, C, T, adaptive);
+        ivf.save(index_path);
+    } else {
+        IVF ivf(X, C, adaptive);
+        ivf.save(index_path);
+    }
 
     return 0;
 }

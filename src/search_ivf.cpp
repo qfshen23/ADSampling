@@ -1,6 +1,7 @@
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
 #define COUNT_DIMENSION
+#define PLOT_DISK_K
 // #define COUNT_DIST_TIME
 
 #include <iostream>
@@ -20,6 +21,8 @@ const int MAXK = 100;
 
 long double rotation_time=0;
 
+char diskK_path[256] = "";
+
 void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int k){
     float sys_t, usr_t, usr_t_sum = 0, total_time=0, search_time=0;
     struct rusage run_start, run_end;
@@ -31,6 +34,14 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     // nprobes.push_back(80);
     // nprobes.push_back(100);
     nprobes.push_back(200);
+
+#ifdef PLOT_DISK_K
+    std::ofstream fout(diskK_path);
+    if(!fout.is_open()) {
+        std::cerr << "Error: cannot open file " << diskK_path << std::endl;
+        exit(1);
+    }
+#endif
     
     for(auto nprobe:nprobes){
         total_time=0;
@@ -38,11 +49,26 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         int correct = 0;
 
         for(int i=0;i<Q.n;i++){
+#ifdef PLOT_DISK_K
+            adsampling::diskK_vec.clear();
+#endif
             GetCurTime( &run_start);
             ResultHeap KNNs = ivf.search(Q.data + i * Q.d, k, nprobe);
             GetCurTime( &run_end);
             GetTime(&run_start, &run_end, &usr_t, &sys_t);
             total_time += usr_t * 1e6;
+
+#ifdef PLOT_DISK_K
+            // plot diskK curve
+            if((i % 1000) == 0) {              
+                fout << adsampling::diskK_vec.size() << " " << i << std::endl;
+                for(auto x: adsampling::diskK_vec) {
+                    fout << x << " ";
+                }
+                fout << std::endl;
+            }
+#endif
+
             // Recall
             while(KNNs.empty() == false){
                 int id = KNNs.top().second;
@@ -60,12 +86,15 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         cout << "Recall = " << recall * 100.000 << "%\t" << endl;
         cout << "Time = " << time_us_per_query << " us \t QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
         // cout << "total_time: " << total_time << ", time1 = " << adsampling::time1 << " time2 = " << adsampling::time2 - adsampling::time3 << " time3 = " << adsampling::time3 << endl;
-        cout << "time1 proportion: " << adsampling::time1 / total_time * 100 << "%, time2 proportion: " << (adsampling::time2) / total_time * 100 << "%, time3 proportion: " << adsampling::time3 / total_time * 100 << ", other" << (total_time - adsampling::time1 - adsampling::time2 - adsampling::time3) / total_time * 100 << "%" << endl;
-        cout << "time1: " << adsampling::time1 << ", time2: " << adsampling::time2 << ", time3: " << adsampling::time3 << endl;
-        cout << "average count of exact distance vectors: " << adsampling::cntt / Q.n << endl;
-        cout << "average count of exact srq_dist calls: " << adsampling::dist_cnt / Q.n << endl;
-        cout << "total dimention: " << adsampling::tot_dimension << endl;
+        // cout << "time1 proportion: " << adsampling::time1 / total_time * 100 << "%, time2 proportion: " << (adsampling::time2) / total_time * 100 << "%, time3 proportion: " << adsampling::time3 / total_time * 100 << ", other" << (total_time - adsampling::time1 - adsampling::time2 - adsampling::time3) / total_time * 100 << "%" << endl;
+        // cout << "time1: " << adsampling::time1 << ", time2: " << adsampling::time2 << ", time3: " << adsampling::time3 << endl;
+        // cout << "average count of exact distance vectors: " << adsampling::cntt / Q.n << endl;
+        // cout << "average count of exact srq_dist calls: " << adsampling::dist_cnt / Q.n << endl;
+        cout << "pruned rate: " << 1 - (adsampling::tot_dimension + (double)0.0) / adsampling::all_dimension << endl;
     }
+#ifdef PLOT_DISK_K
+    fout.close();
+#endif
 }
 
 int main(int argc, char * argv[]) {
@@ -87,7 +116,7 @@ int main(int argc, char * argv[]) {
         {"groundtruth_path",            required_argument, 0, 'g'},
         {"result_path",                 required_argument, 0, 'r'},
         {"transformation_path",         required_argument, 0, 't'},
-        {"propotion",                   required_argument, 0, 'a'},
+        {"diskK_path",                  required_argument, 0, 'a'},
     };
 
     int ind;
@@ -104,8 +133,8 @@ int main(int argc, char * argv[]) {
     int randomize = 0;
     int subk = 100;
 
-    while(iarg != -1){
-        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:", longopts, &ind);
+    while(iarg != -1) {
+        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:a:", longopts, &ind);
         switch (iarg){
             case 'd':
                 if(optarg)randomize = atoi(optarg);
@@ -136,6 +165,9 @@ int main(int argc, char * argv[]) {
                 break;
             case 'n':
                 if(optarg)strcpy(dataset, optarg);
+                break;
+            case 'a':
+                if(optarg)strcpy(diskK_path, optarg);
                 break;
         }
     }

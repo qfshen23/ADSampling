@@ -42,6 +42,7 @@ public:
 
     IVF();
     IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive=0);
+    IVF(const Matrix<float> &X, const Matrix<float> &_centroids, const Matrix<int> &groundtruth, int adaptive);
     ~IVF();
 
     ResultHeap search(float* query, size_t k, size_t nprobe, float distK = std::numeric_limits<float>::max()) const;
@@ -219,6 +220,111 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) 
     // delete [] temp;
 }
 
+IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, const Matrix<int> &groundtruth, int adaptive) {
+    N = X.n;
+    D = X.d;
+    C = _centroids.n;
+
+    assert(D >= 32);
+    start = new size_t[C];
+    len = new size_t[C];
+    id = new size_t[N];
+
+    // 用于统计每个 base vector 在 groundtruth 中的出现次数
+    std::vector<int> base_vector_count(N, 0);
+
+    // 统计出现次数
+    for (int i = 0; i < groundtruth.n; i++) {
+        for (int j = 0; j < groundtruth.d; j++) {
+            int base_vector_id = groundtruth.data[i * groundtruth.d + j];
+            if (base_vector_id >= 0 && base_vector_id < N) { // 确保索引合法
+                base_vector_count[base_vector_id]++;
+            }
+        }
+    }
+
+    int num_threads = 32;
+    std::vector<std::vector<size_t>> thread_temp(num_threads * C);
+
+    #pragma omp parallel
+    {
+        int tid = omp_get_thread_num();
+        #pragma omp for
+        for (int i = 0; i < X.n; i++) {
+            int belong = 0;
+            float dist_min = X.dist(i, _centroids, 0);
+            for (int j = 1; j < C; j++) {
+                float dist = X.dist(i, _centroids, j);
+                if (dist < dist_min) {
+                    dist_min = dist;
+                    belong = j;
+                }
+            }
+            thread_temp[tid * C + belong].push_back(i);
+        }
+    }
+
+    std::cerr << "Cluster Generated!" << std::endl;
+
+    std::vector<std::vector<size_t>> temp(C);
+    for (int t = 0; t < num_threads; t++) {
+        for (int c = 0; c < (int)C; c++) {
+            auto &src = thread_temp[t * C + c];
+            temp[c].insert(temp[c].end(), src.begin(), src.end());
+        }
+    }
+
+    size_t sum = 0;
+    for (int i = 0; i < (int)C; i++) {
+        len[i] = temp[i].size();
+        start[i] = sum;
+        sum += len[i];
+    }
+
+    // 对每个 cluster 内的样本索引根据 base_vector_count 从大到小排序
+    #pragma omp parallel for
+    for (int i = 0; i < (int)C; i++) {
+        std::sort(temp[i].begin(), temp[i].end(), [&](size_t a, size_t b) {
+            return base_vector_count[a] > base_vector_count[b];
+        });
+    }
+
+    // 写入 id[]
+    #pragma omp parallel for
+    for (int i = 0; i < (int)C; i++) {
+        size_t offset = start[i];
+        for (size_t j = 0; j < len[i]; j++) {
+            id[offset + j] = temp[i][j];
+        }
+    }
+
+    if (adaptive == 1)
+        d = 32;
+    else if (adaptive == 0)
+        d = D;
+    else
+        d = 0;
+
+    L1_data = new float[N * d + 10];
+    res_data = new float[N * (D - d) + 10];
+    centroids = new float[C * D];
+
+    #pragma omp parallel for
+    for (int i = 0; i < (int)N; i++) {
+        int x = id[i];
+        for (int j = 0; j < (int)D; j++) {
+            if (j < d) {
+                L1_data[i * d + j] = X.data[x * D + j];
+            } else {
+                res_data[i * (D - d) + (j - d)] = X.data[x * D + j];
+            }
+        }
+    }
+
+    std::memcpy(centroids, _centroids.data, C * D * sizeof(float));
+    temp.clear();
+}
+
 IVF::~IVF(){
     if(id != NULL)delete [] id;
     if(len != NULL)delete [] len;
@@ -231,9 +337,9 @@ IVF::~IVF(){
 ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const{
     // unsigned int seed = 123456;
     // std::mt19937 rng(seed);
-    random_device rd;
-    std::mt19937 rng(rd());
-    std::uniform_real_distribution<float> random_dist(0.0, 1.0);
+    // random_device rd;
+    // std::mt19937 rng(rd());
+    // std::uniform_real_distribution<float> random_dist(0.0, 1.0);
     // the default value of distK is +inf 
     Result* centroid_dist = new Result [C];
 
@@ -258,7 +364,11 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     size_t ncan = 0;
     for(int i=0;i<nprobe;i++)
         ncan += len[centroid_dist[i].second];
+    
+    adsampling::all_dimension += 1ll * ncan * D;
+
     if(d == D) adsampling::tot_dimension += 1ll * ncan * D;
+    else if(d > 0) adsampling::tot_dimension += 1ll * ncan * d;
 
     float * dist = new float [ncan];
     Result * candidates = new Result [ncan];
@@ -315,9 +425,9 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
             //     continue;
             // }
 
-            float r = random_dist(rng);
-            // flag[cur] = (r <= 0.75);
-            if(r >= 0.75) continue;
+            // float r = random_dist(rng);
+            // // flag[cur] = (r <= 0.75);
+            // if(r >= 0.75) continue;
 
             cur++;
 
@@ -328,7 +438,7 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
 #ifdef COUNT_DIST_TIME
             StopW stopw = StopW();
 #endif
-            float tmp_dist = sqr_distt(query, L1_data + can * d, d);
+            float tmp_dist = sqr_dist(query, L1_data + can * d, d);
 #ifdef COUNT_DIST_TIME
             adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif      
@@ -373,8 +483,6 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
 #ifdef COUNT_DIST_TIME
                 adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif                     
-                
-                
                 if(tmp_dist > 0){
                     KNNs.emplace(tmp_dist, id[can]);
                     if(KNNs.size() > k) KNNs.pop();
@@ -382,6 +490,15 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
                 if(KNNs.size() == k && KNNs.top().first < distK){
                     distK = KNNs.top().first;
                 }
+
+                // if((j % 100) == 0 and distK < 1e20) {
+                //     adsampling::diskK_vec.push_back(distK);
+                // }
+
+                if(distK < 1e20) {
+                    adsampling::diskK_vec.push_back(distK);
+                }
+                
                 cur_dist++;
                 
             }
@@ -395,7 +512,6 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     // delete [] flag;
     return KNNs;
 }
-
 
 void IVF::save(char * filename){
     std::ofstream output(filename, std::ios::binary);
