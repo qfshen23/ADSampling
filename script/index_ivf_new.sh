@@ -1,16 +1,16 @@
 cd ..
 g++ -fopenmp -O3 ./src/index_ivf.cpp -o ./src/index_ivf  -I ./src/ -I /usr/include/eigen3 
 C=4096
-datasets=('sift')
+datasets=('gist' 'sift' 'deep1M')
 
-prop=50
+# prop=50
 
 for data in "${datasets[@]}"
 do  
     for adaptive in {0..2}
     do
 
-        if [ $adaptive -ne 1 ];then
+        if [ $adaptive -ne 2 ];then
             echo "Skipping adaptive=${adaptive} for dataset ${data}"
             continue
         fi  
@@ -33,11 +33,15 @@ do
             centroid_file="${data_path}/O${data}_centroid_${C}.fvecs"
         fi
 
+        training="${data_path}/${data}_groundtruth.ivecs"
+
         # 0 - IVF, 1 - IVF++, 2 - IVF+
-        index_file="${index_path}/${data}_ivf_${C}_${adaptive}_${prop}.index"
+        # index_file="${index_path}/${data}_ivf_${C}_${adaptive}_reorder.index"
+        index_file="${index_path}/${data}_ivf_${C}_${adaptive}.index"
 
         echo $index_file
 
+        # ./src/index_ivf -d $data_file -c $centroid_file -i $index_file -a $adaptive -t $training
         ./src/index_ivf -d $data_file -c $centroid_file -i $index_file -a $adaptive
     done
 done
