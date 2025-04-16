@@ -89,7 +89,13 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
 static void test_vs_recall(float *massQ, size_t vecsize, size_t qsize, HierarchicalNSW<float> &appr_alg, size_t vecdim,
                vector<std::priority_queue<std::pair<float, labeltype >>> &answers, size_t k, int adaptive) {
     vector<size_t> efs;
-    efs.push_back(1500);
+    efs.push_back(200);
+    efs.push_back(400);
+    efs.push_back(600);
+    efs.push_back(800);
+    efs.push_back(1000);
+    efs.push_back(1200);
+    efs.push_back(1400);
     for (size_t ef : efs) {
         appr_alg.setEf(ef);
         test_approx(massQ, vecsize, qsize, appr_alg, vecdim, answers, k, adaptive);
@@ -166,13 +172,13 @@ int main(int argc, char * argv[]) {
                 break;
         }
     }   
-    
-    Matrix<float> Q(query_path);
+
     Matrix<unsigned> G(groundtruth_path);
-    Matrix<float> P(transformation_path);
+    Matrix<float> Q(query_path);
 
     freopen(result_path,"a",stdout);
     if(randomize){
+        Matrix<float> P(transformation_path);
         StopW stopw = StopW();
         Q = mul(Q, P);
         rotation_time = stopw.getElapsedTimeMicro() / Q.n;
