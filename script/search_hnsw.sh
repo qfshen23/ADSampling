@@ -1,37 +1,45 @@
-
 cd ..
 
-g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/
+g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/ -I /usr/include/eigen3 
 
-path=./data/
-result_path=./results/
-
-data='gist'
 ef=500
-M=16
+M=32
+datasets=('sift')
 
-for randomize in {0..2}
-do
-if [ $randomize == "1" ]
-then 
-    echo "HNSW++"
-    index="${path}/${data}/O${data}_ef${ef}_M${M}.index"
-elif [ $randomize == "2" ]
-then 
-    echo "HNSW+"
-    index="${path}/${data}/O${data}_ef${ef}_M${M}.index"
-else
-    echo "HNSW"
-    index="${path}/${data}/${data}_ef${ef}_M${M}.index"    
-fi
+for data in "${datasets[@]}"
+do  
+    for adaptive in {0..2}
+    do
 
-res="${result_path}/${data}_ef${ef}_M${M}_${randomize}.log"
-query="${path}/${data}/${data}_query.fvecs"
-gnd="${path}/${data}/${data}_groundtruth.ivecs"
-trans="${path}/${data}/O.fvecs"
+        if [ $adaptive -ne 0 ];then
+            echo "Skipping adaptive=${adaptive} for dataset ${data}"
+            continue
+        fi  
 
-./src/search_hnsw -d ${randomize} -n ${data} -i ${index} -q ${query} -g ${gnd} -r ${res} -t ${trans} 
+        echo "Indexing - ${data}"
 
+        data_path=/data/vector_datasets/${data}
+        index_path=/data/tmp/hnsw/${data}
+        result_path=./results
+
+        if [ ! -d "$index_path" ]; then 
+            mkdir -p "$index_path"
+        fi
+
+        if [ $adaptive == "0" ] # raw vectors 
+        then
+            data_file="${data_path}/${data}_base.fvecs"
+        else                    # preprocessed vectors                  
+            data_file="${data_path}/O${data}_base.fvecs"
+        fi
+
+        # 0 - IVF, 1 - IVF++, 2 - IVF+
+        index_file="${index_path}/O${data}_ef${ef}_M${M}.index"
+        res="${result_path}/${data}_ef${ef}_M${M}_${adaptive}.log"
+        query="${data_path}/${data}_query.fvecs"
+        gnd="${data_path}/${data}_groundtruth.ivecs"
+        trans="${data_path}/O.fvecs"
+
+        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -t ${trans}
+    done
 done
-
-
