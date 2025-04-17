@@ -19,8 +19,8 @@ We have included detailed comments in these functions.
 
 #include "visited_list_pool.h"
 #include "hnswlib.h"
-//#include "adasampling.h"
 #include "adsampling.h"
+#include "utils.h"
 #include <atomic>
 #include <random>
 #include <stdlib.h>
@@ -1400,6 +1400,9 @@ namespace hnswlib {
             adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif
             adsampling::tot_dist_calculation ++;
+
+            // StopW stopw = StopW();
+
             for (int level = maxlevel_; level > 0; level--) {
                 
                 bool changed = true;
@@ -1451,6 +1454,9 @@ namespace hnswlib {
                     }
                 }
             }
+            
+            // adsampling::time1 += stopw.getElapsedTimeMicro();
+            
             // max heap
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
             
@@ -1462,10 +1468,13 @@ namespace hnswlib {
             else{
                 if(adaptive == 1) top_candidates=searchBaseLayerADstar<true,true>(currObj, query_data, std::max(ef_, k), k);
                 else if(adaptive == 2) top_candidates=searchBaseLayerAD<true,true>(currObj, query_data, std::max(ef_, k));
-                else top_candidates=searchBaseLayerST<false,true>(currObj, query_data, std::max(ef_, k));
+                else {
+                    // stopw = StopW();
+                    top_candidates=searchBaseLayerST<false,true>(currObj, query_data, std::max(ef_, k));
+                    // adsampling::time2 += stopw.getElapsedTimeMicro();
+                }
             }
 
-            //cerr << "search baselayer succeed!" << endl;
             while (top_candidates.size() > k) {
                 top_candidates.pop();
             }

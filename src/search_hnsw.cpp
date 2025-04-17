@@ -2,8 +2,8 @@
 
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
-#define COUNT_DIMENSION
-// #define COUNT_DIST_TIME
+// #define COUNT_DIMENSION
+#define COUNT_DIST_TIME
 
 #include <iostream>
 #include <fstream>
@@ -63,12 +63,15 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     adsampling::clear();
 
     for (int i = 0; i < qsize; i++) {
+
 #ifndef WIN32
         float sys_t, usr_t, usr_t_sum = 0;  
         struct rusage run_start, run_end;
         GetCurTime( &run_start);
 #endif
+
         std::priority_queue<std::pair<float, labeltype >> result = appr_alg.searchKnn(massQ + vecdim * i, k, adaptive);  
+
 #ifndef WIN32
         GetCurTime( &run_end);
         GetTime( &run_start, &run_end, &usr_t, &sys_t);
@@ -81,21 +84,29 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     }
     long double time_us_per_query = total_time / qsize + rotation_time;
     long double recall = 1.0f * correct / total;
-    
-    cout << appr_alg.ef_ << " " << recall * 100.0 << " " << time_us_per_query << " " << adsampling::tot_dimension + adsampling::tot_full_dist * vecdim << endl;
+    cout << "---------------ADSampling HNSW------------------------" << endl;
+    cout << "ef = " << appr_alg.ef_ << " k = " << k << endl;
+    cout << "Recall = " << recall * 100.0 << "%\t" << endl;
+    cout << "QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
+    // cout << "Time1 = " << adsampling::time1 << " us" << endl;
+    // cout << "Time2 = " << adsampling::time2 << " us" << endl;
+    cout << "Distance time = " << adsampling::distance_time << " us" << endl;
+    cout << "Total time = " << total_time << " us" << endl;
+    // cout << appr_alg.ef_ << " " << recall * 100.0 << " " << time_us_per_query << " " << adsampling::tot_dimension + adsampling::tot_full_dist * vecdim << endl;
     return ;
 }
 
 static void test_vs_recall(float *massQ, size_t vecsize, size_t qsize, HierarchicalNSW<float> &appr_alg, size_t vecdim,
                vector<std::priority_queue<std::pair<float, labeltype >>> &answers, size_t k, int adaptive) {
     vector<size_t> efs;
+    efs.push_back(100);
     efs.push_back(200);
     efs.push_back(400);
-    efs.push_back(600);
-    efs.push_back(800);
-    efs.push_back(1000);
-    efs.push_back(1200);
-    efs.push_back(1400);
+    // efs.push_back(600);
+    // efs.push_back(800);
+    // efs.push_back(1000);
+    // efs.push_back(1500);
+    // efs.push_back(2000);
     for (size_t ef : efs) {
         appr_alg.setEf(ef);
         test_approx(massQ, vecsize, qsize, appr_alg, vecdim, answers, k, adaptive);

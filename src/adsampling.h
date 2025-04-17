@@ -30,7 +30,7 @@ unsigned long long cntt = 0;
 unsigned long long dist_cnt = 0;
 std::vector<float> diskK_vec;
 
-void clear(){
+void clear() {
     distance_time = 0;
     tot_dimension = 0;
     all_dimension = 0;
