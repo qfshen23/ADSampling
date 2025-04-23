@@ -96,6 +96,7 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     cout << "Total distance computation = " << adsampling::tot_dist_calculation << endl;
     cout << "Total distance = " << adsampling::tot_full_dist << endl;
     cout << "Total prune = " << adsampling::tot_prune << endl;
+    cout << "Total tt = " << adsampling::tt / qsize << endl;
     // cout << appr_alg.ef_ << " " << recall * 100.0 << " " << time_us_per_query << " " << adsampling::tot_dimension + adsampling::tot_full_dist * vecdim << endl;
     return ;
 }

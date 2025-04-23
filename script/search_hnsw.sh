@@ -1,6 +1,6 @@
 cd ..
 
-g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/ -I /usr/include/eigen3 
+g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/ -I /usr/include/eigen3
 
 ef=500
 M=32
@@ -44,8 +44,8 @@ do
         centroids="${data_path}/${data}_centroid_${K}.fvecs"
 
         # sift_distances_64.fvecs
-
         distances="${data_path}/${data}_distances_${K}.fvecs"
+        
         # sudo perf record -g 
         ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -t ${trans} -c ${distances} -l ${centroids}
     done
