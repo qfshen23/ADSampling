@@ -292,6 +292,252 @@ namespace hnswlib {
         mutable std::atomic<long> metric_distance_computations;
         mutable std::atomic<long> metric_hops;
 
+
+        template <bool has_deletions, bool collect_metrics=false>
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
+        searchBaseLayerST(tableint ep_id, const void *data_point, size_t ef) const {
+            VisitedList *vl = visited_list_pool_->getFreeVisitedList();
+            vl_type *visited_array = vl->mass;
+            vl_type visited_array_tag = vl->curV;
+
+            int ef1 = 2000, ef2 = 1000, ef3 = 100, dcos = 500;
+
+            // Compute distances from query to all centroids
+            std::vector<dist_t> query_to_centroids;
+            if (num_centroids_ > 0) {
+                query_to_centroids.resize(num_centroids_);
+                for (size_t i = 0; i < num_centroids_; i++) {
+                    query_to_centroids[i] = fstdistfunc_(data_point, centroids_[i].data(), dist_func_param_);
+                }
+            }
+
+            // top_candidates - the result set R
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
+
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> candidates_for_candidates;
+            // candidate_set  - the search set S
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
+
+            dist_t lowerBound;
+            // Insert the entry point to the result and search set with its exact distance as a key. 
+            if (!has_deletions || !isMarkedDeleted(ep_id)) {
+                dist_t dist = fstdistfunc_(data_point, getDataByInternalId(ep_id), dist_func_param_);
+                lowerBound = dist;
+                top_candidates.emplace(dist, ep_id);
+                candidate_set.emplace(-dist, ep_id);
+                candidates_for_candidates.emplace(-dist, ep_id);
+            } 
+            else {
+                lowerBound = std::numeric_limits<dist_t>::max();
+                candidate_set.emplace(-lowerBound, ep_id);
+                candidates_for_candidates.emplace(-lowerBound, ep_id);
+            }      
+
+            // Phase 1, execute 'dcos' times exact distance calculation to find a better entry point
+            int cnt_dcos = 1;
+            // tableint minn_id = ep_id;
+            dist_t lowerBound_for_candidates = lowerBound;
+
+            while (!candidate_set.empty() && cnt_dcos < dcos) {
+                std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
+                candidate_set.pop();
+
+                tableint current_node_id = current_node_pair.second;
+                int *data = (int *) get_linklist0(current_node_id);
+                size_t size = getListCount((linklistsizeint*)data);
+
+                for (size_t j = 1; j <= size; j++) {
+                    int candidate_id = *(data + j);
+                    char *currObj1 = (getDataByInternalId(candidate_id));
+                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);       
+                    cnt_dcos ++;
+
+                    // if (dist < minn_dist) {
+                    //     minn_dist = dist;
+                    //     minn_id = candidate_id;
+                    // }
+
+                    if (candidates_for_candidates.size() < ef3 || lowerBound_for_candidates > dist) {                      
+                        candidate_set.emplace(-dist, candidate_id);
+                        if (!has_deletions || !isMarkedDeleted(candidate_id))
+                            candidates_for_candidates.emplace(dist, candidate_id);
+
+                        if (candidates_for_candidates.size() > ef3)
+                            candidates_for_candidates.pop();
+
+                        if (!candidates_for_candidates.empty())
+                            lowerBound_for_candidates = candidates_for_candidates.top().first;
+                    }
+
+                }
+            }
+
+            // Phase 2, execute BFS from minn_id
+            std::vector<std::pair<dist_t, tableint>> candidates;
+            std::queue<tableint> queue;
+            
+            while (!candidates_for_candidates.empty()) {
+                tableint candidate_id = candidates_for_candidates.top().second;
+                candidates_for_candidates.pop();
+                
+                visited_array[candidate_id] = visited_array_tag;
+
+                dist_t dist = 0;
+                dist_t* distances = (dist_t*)(centroid_distances_memory_ + candidate_id * size_per_element_centroids_);
+                for (size_t c = 0; c < num_centroids_; c++) {
+                    dist = std::max(dist, std::abs(query_to_centroids[c] - distances[c]));
+                }
+                candidates.emplace_back(dist, candidate_id);
+                queue.push(candidate_id);
+            }
+
+            
+            int cnt_visit = 1;
+
+            // execute BFS from ep_id and add them into candidates
+            while(cnt_visit < ef1 && !queue.empty()) {
+                tableint current_node_id = queue.front();
+                queue.pop();
+
+                int *data = (int *) get_linklist0(current_node_id);
+                size_t size = getListCount((linklistsizeint*)data);
+
+                for(size_t j = 1; j <= size; j++) {
+                    tableint candidate_id = *(data + j);
+                    if(!(visited_array[candidate_id] == visited_array_tag)) {
+                        visited_array[candidate_id] = visited_array_tag;
+                        dist_t dist = 0;
+                        dist_t* distances = (dist_t*)(centroid_distances_memory_ + candidate_id * size_per_element_centroids_);
+                        for (size_t c = 0; c < num_centroids_; c++) {
+                            dist = std::max(dist, std::abs(query_to_centroids[c] - distances[c]));
+                        }
+                        candidates.emplace_back(dist, candidate_id);
+                        cnt_visit ++;
+                        queue.push(candidate_id);
+                    }
+                }
+            }
+
+            // partial sort the candidates by first ef2 elements
+            std::partial_sort(candidates.begin(), candidates.begin() + std::min(ef1, (int)candidates.size()), candidates.end(), CompareByFirst());
+
+            // then calculate the exact distances for the first ef2 elements
+            for (size_t i = 0; i < std::min(ef2, (int)candidates.size()); i++) {
+                tableint candidate_id = candidates[i].second;
+                dist_t dist = fstdistfunc_(data_point, getDataByInternalId(candidate_id), dist_func_param_);
+                if (top_candidates.size() < ef || lowerBound > dist) {                      
+                    if (!has_deletions || !isMarkedDeleted(candidate_id))
+                        top_candidates.emplace(dist, candidate_id);
+
+                    if (top_candidates.size() > ef)
+                        top_candidates.pop();
+
+                    if (!top_candidates.empty())
+                        lowerBound = top_candidates.top().first;
+                }
+            }
+
+            adsampling::tot_dist_calculation += cnt_visit;
+            visited_list_pool_->releaseVisitedList(vl);
+            return top_candidates;
+        }
+        
+
+
+        /*
+        template <bool has_deletions, bool collect_metrics=false>
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
+        searchBaseLayerST(tableint ep_id, const void *data_point, size_t ef) const {
+            VisitedList *vl = visited_list_pool_->getFreeVisitedList();
+            vl_type *visited_array = vl->mass;
+            vl_type visited_array_tag = vl->curV;
+
+            int ef1 = 2000, ef2 = 1000;
+
+            // Compute distances from query to all centroids
+            std::vector<dist_t> query_to_centroids;
+            if (num_centroids_ > 0) {
+                query_to_centroids.resize(num_centroids_);
+                for (size_t i = 0; i < num_centroids_; i++) {
+                    query_to_centroids[i] = fstdistfunc_(data_point, centroids_[i].data(), dist_func_param_);
+                }
+            }
+
+            std::vector<std::pair<dist_t, tableint>> candidates;
+            std::queue<tableint> queue;
+            // top_candidates - the result set R
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
+
+            dist_t lowerBound = std::numeric_limits<dist_t>::max();
+            
+            dist_t* ep_distances = (dist_t*)(centroid_distances_memory_ + ep_id * size_per_element_centroids_);
+            dist_t ep_dist = 0;
+            for (size_t c = 0; c < num_centroids_; c++) {
+                ep_dist = std::max(ep_dist, std::abs(query_to_centroids[c] - ep_distances[c]));
+            }
+            candidates.emplace_back(ep_dist, ep_id);
+            visited_array[ep_id] = visited_array_tag;
+            queue.push(ep_id);        
+
+            int cnt_visit = 1;
+            // execute BFS from ep_id and add them into candidates
+            while(cnt_visit < ef1 && !queue.empty()) {
+                tableint current_node_id = queue.front();
+                queue.pop();
+
+                // Fetch the smallest object in S. 
+                int *data = (int *) get_linklist0(current_node_id);
+                size_t size = getListCount((linklistsizeint*)data);
+
+                for(size_t j = 1; j <= size; j++) {
+                    tableint candidate_id = *(data + j);
+                    if(!(visited_array[candidate_id] == visited_array_tag)) {
+                        visited_array[candidate_id] = visited_array_tag;
+                        dist_t dist = 0;
+                        dist_t* distances = (dist_t*)(centroid_distances_memory_ + candidate_id * size_per_element_centroids_);
+                        for (size_t c = 0; c < num_centroids_; c++) {
+                            dist = std::max(dist, std::abs(query_to_centroids[c] - distances[c]));
+                        }
+                        candidates.emplace_back(dist, candidate_id);
+                        cnt_visit ++;
+                        queue.push(candidate_id);
+                    }
+                }
+            }
+
+            // partial sort the candidates by first 500 elements
+            std::partial_sort(candidates.begin(), candidates.begin() + std::min(ef1, (int)candidates.size()), candidates.end(), CompareByFirst());
+
+            if(candidates.size() == 1) {
+                int *data = (int *) get_linklist0(ep_id);
+                size_t size = getListCount((linklistsizeint*)data);
+                std::cerr << "ep node' neighbor size: " << size << std::endl;
+            }
+
+            // then calculate the exact distances for the first 500 elements
+            for (size_t i = 0; i < std::min(ef2, (int)candidates.size()); i++) {
+                tableint candidate_id = candidates[i].second;
+                dist_t dist = fstdistfunc_(data_point, getDataByInternalId(candidate_id), dist_func_param_);
+                if (top_candidates.size() < ef || lowerBound > dist) {                      
+                    if (!has_deletions || !isMarkedDeleted(candidate_id))
+                        top_candidates.emplace(dist, candidate_id);
+
+                    if (top_candidates.size() > ef)
+                        top_candidates.pop();
+
+                    if (!top_candidates.empty())
+                        lowerBound = top_candidates.top().first;
+                }
+            }
+
+            adsampling::tot_dist_calculation += cnt_visit;
+            visited_list_pool_->releaseVisitedList(vl);
+            return top_candidates;
+        }
+        */
+
+        
+        /*
         template <bool has_deletions, bool collect_metrics=false>
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
         searchBaseLayerST(tableint ep_id, const void *data_point, size_t ef) const {
@@ -313,7 +559,7 @@ namespace hnswlib {
                 }
             }
         
-            dist_t lowerBound;
+            dist_t lowerBound, entry_dist;
             // Insert the entry point to the result and search set with its exact distance as a key. 
             if (!has_deletions || !isMarkedDeleted(ep_id)) {
 #ifdef COUNT_DIST_TIME
@@ -328,6 +574,8 @@ namespace hnswlib {
                 lowerBound = dist;
                 top_candidates.emplace(dist, ep_id);
                 candidate_set.emplace(-dist, ep_id);
+
+                entry_dist = dist;
             } 
             else {
                 lowerBound = std::numeric_limits<dist_t>::max();
@@ -336,6 +584,8 @@ namespace hnswlib {
 
             visited_array[ep_id] = visited_array_tag;
             int cnt_visit = 0;
+
+            dist_t minn = std::numeric_limits<dist_t>::max();
 
             // Iteratively generate candidates and conduct DCOs to maintain the result set R.
             while (!candidate_set.empty()) {
@@ -356,6 +606,8 @@ namespace hnswlib {
                     metric_distance_computations+=size;
                 }
 
+                
+
                 // Enumerate all the neighbors of the object and view them as candidates of KNNs. 
                 for (size_t j = 1; j <= size; j++) {
                     int candidate_id = *(data + j);
@@ -365,22 +617,22 @@ namespace hnswlib {
 
                         // StopW stopww = StopW();
                         // Try to prune using triangle inequality with centroids
-                        dist_t* distances = (dist_t*)(centroid_distances_memory_ + candidate_id * size_per_element_centroids_);
-                        bool can_prune = false;
-                        // For each centroid, check if triangle inequality allows pruning
-                        for (size_t c = 0; c < num_centroids_; c++) {
-                            dist_t diff = std::abs(query_to_centroids[c] - distances[c]);
-                            can_prune |= (diff > lowerBound); // 无分支替代
-                        }
+                        // dist_t* distances = (dist_t*)(centroid_distances_memory_ + candidate_id * size_per_element_centroids_);
+                        // bool can_prune = false;
+                        // // For each centroid, check if triangle inequality allows pruning
+                        // for (size_t c = 0; c < num_centroids_; c++) {
+                        //     dist_t diff = std::abs(query_to_centroids[c] - distances[c]);
+                        //     can_prune |= (diff > lowerBound); // 无分支替代
+                        // }
 
 
 
-                        // adsampling::time3 += stopww.getElapsedTimeMicro();
+                        // // adsampling::time3 += stopww.getElapsedTimeMicro();
 
-                        if (can_prune) {
-                            adsampling::tot_prune++;
-                            // continue;
-                        }
+                        // if (can_prune) {
+                        //     adsampling::tot_prune++;
+                        //     // continue;
+                        // }
                         
                         // Conduct DCO with FDScanning wrt the N_ef th NN: 
                         // (1) calculate its exact distance 
@@ -393,6 +645,7 @@ namespace hnswlib {
 #ifdef COUNT_DIST_TIME
                         adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif                  
+                        minn = std::min(minn, dist);
                         adsampling::tot_full_dist ++;
                         if (top_candidates.size() < ef || lowerBound > dist) {                      
                             candidate_set.emplace(-dist, candidate_id);
@@ -409,10 +662,14 @@ namespace hnswlib {
                     }
                 }
             }
+
+            adsampling::tt += entry_dist / minn;
             adsampling::tot_dist_calculation += cnt_visit;
             visited_list_pool_->releaseVisitedList(vl);
             return top_candidates;
         }
+
+        */
 
         template <bool has_deletions, bool collect_metrics=false>
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
