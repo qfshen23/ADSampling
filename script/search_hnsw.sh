@@ -5,6 +5,7 @@ g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/ -I /usr/include/eig
 ef=500
 M=32
 datasets=('sift')
+K=64
 
 for data in "${datasets[@]}"
 do  
@@ -16,7 +17,7 @@ do
             continue
         fi  
 
-        echo "Indexing - ${data}"
+        echo "Searching - ${data}"
 
         data_path=/data/vector_datasets/${data}
         index_path=/data/tmp/hnsw/${data}
@@ -40,6 +41,12 @@ do
         gnd="${data_path}/${data}_groundtruth.ivecs"
         trans="${data_path}/O.fvecs"
 
-        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -t ${trans}
+        centroids="${data_path}/${data}_centroid_${K}.fvecs"
+
+        # sift_distances_64.fvecs
+
+        distances="${data_path}/${data}_distances_${K}.fvecs"
+        # sudo perf record -g 
+        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -t ${trans} -c ${distances} -l ${centroids}
     done
 done

@@ -23,6 +23,7 @@ unsigned int delta_d = 32; // dimension sampling for every delta_d dimensions.
 long double distance_time = 0;
 unsigned long long tot_dimension = 0;
 unsigned long long all_dimension = 0;
+unsigned long long tot_prune = 0;
 unsigned long long tot_dist_calculation = 0;
 unsigned long long tot_full_dist = 0;
 long double time1 = 0, time2 = 0, time3 = 0, time4 = 0;
@@ -38,6 +39,7 @@ void clear() {
     tot_full_dist = 0;
     time1 = time2 = time3 = time4 = 0;
     cntt = dist_cnt = 0;
+    tot_prune = 0;
     diskK_vec.clear();
 }
 
