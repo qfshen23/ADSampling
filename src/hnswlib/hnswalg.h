@@ -1,5 +1,4 @@
 #pragma once
-
 /*
 This implementation is largely based on https://github.com/nmslib/hnswlib. 
 We highlight the following functions which are closely related to our proposed algorithms.
@@ -41,8 +40,8 @@ namespace hnswlib {
         HierarchicalNSW(SpaceInterface<dist_t> *s) {
         }
 
-        HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, bool nmslib = false, size_t max_elements=0) {
-            loadIndex(location, s, max_elements);
+        HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, const std::string &distances, const std::string &centroids, bool nmslib = false, size_t max_elements=0) {
+            loadIndex(location, distances, centroids, s, max_elements);
         }
 
         HierarchicalNSW(SpaceInterface<dist_t> *s, size_t max_elements, size_t M = 16, size_t ef_construction = 200, size_t random_seed = 100) :
@@ -72,6 +71,11 @@ namespace hnswlib {
             if (data_level0_memory_ == nullptr)
                 throw std::runtime_error("Not enough memory");
 
+            // Initialize centroid distances memory
+            num_centroids_ = 0;
+            size_per_element_centroids_ = 0;
+            centroid_distances_memory_ = nullptr;
+
             cur_element_count = 0;
 
             visited_list_pool_ = new VisitedListPool(1, max_elements);
@@ -96,8 +100,10 @@ namespace hnswlib {
         };
 
         ~HierarchicalNSW() {
-
             free(data_level0_memory_);
+            if (centroid_distances_memory_ != nullptr) {
+                free(centroid_distances_memory_);
+            }
             for (tableint i = 0; i < cur_element_count; i++) {
                 if (element_levels_[i] > 0)
                     free(linkLists_[i]);
@@ -145,6 +151,15 @@ namespace hnswlib {
         void *dist_func_param_;
         std::unordered_map<labeltype, tableint> label_lookup_;
 
+        // Change the member variable declaration
+        std::vector<std::vector<dist_t>> centroid_distances_;
+        size_t num_centroids_;
+        std::vector<std::vector<dist_t>> centroids_;
+
+        // Add a new contiguous memory layout for centroid distances
+        char* centroid_distances_memory_;
+        size_t size_per_element_centroids_;
+
         std::default_random_engine level_generator_;
         std::default_random_engine update_probability_generator_;
 
@@ -164,6 +179,23 @@ namespace hnswlib {
 
         inline char *getDataByInternalId(tableint internal_id) const {
             return (data_level0_memory_ + internal_id * size_data_per_element_ + offsetData_);
+        }
+
+        // Update the getCentroidDistance method to use the new memory layout
+        inline dist_t getCentroidDistance(tableint internal_id, size_t centroid_id) const {
+            if (centroid_id >= num_centroids_) {
+                return 0;
+            }
+            return *((dist_t*)(centroid_distances_memory_ + internal_id * size_per_element_centroids_ + centroid_id * sizeof(dist_t)));
+        }
+        
+        // If original vector-based method is still needed
+        inline std::vector<dist_t> getCentroidDistances(tableint internal_id) const {
+            std::vector<dist_t> distances(num_centroids_);
+            for (size_t i = 0; i < num_centroids_; i++) {
+                distances[i] = getCentroidDistance(internal_id, i);
+            }
+            return distances;
         }
 
         int getRandomLevel(double reverse_size) {
@@ -272,6 +304,15 @@ namespace hnswlib {
             // candidate_set  - the search set S
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
 
+            // Compute distances from query to all centroids
+            std::vector<dist_t> query_to_centroids;
+            if (num_centroids_ > 0) {
+                query_to_centroids.resize(num_centroids_);
+                for (size_t i = 0; i < num_centroids_; i++) {
+                    query_to_centroids[i] = fstdistfunc_(data_point, centroids_[i].data(), dist_func_param_);
+                }
+            }
+        
             dist_t lowerBound;
             // Insert the entry point to the result and search set with its exact distance as a key. 
             if (!has_deletions || !isMarkedDeleted(ep_id)) {
@@ -322,6 +363,25 @@ namespace hnswlib {
                         cnt_visit ++;
                         visited_array[candidate_id] = visited_array_tag;
 
+                        // StopW stopww = StopW();
+                        // Try to prune using triangle inequality with centroids
+                        dist_t* distances = (dist_t*)(centroid_distances_memory_ + candidate_id * size_per_element_centroids_);
+                        bool can_prune = false;
+                        // For each centroid, check if triangle inequality allows pruning
+                        for (size_t c = 0; c < num_centroids_; c++) {
+                            dist_t diff = std::abs(query_to_centroids[c] - distances[c]);
+                            can_prune |= (diff > lowerBound); // 无分支替代
+                        }
+
+
+
+                        // adsampling::time3 += stopww.getElapsedTimeMicro();
+
+                        if (can_prune) {
+                            adsampling::tot_prune++;
+                            // continue;
+                        }
+                        
                         // Conduct DCO with FDScanning wrt the N_ef th NN: 
                         // (1) calculate its exact distance 
                         // (2) compare it with the N_ef th distance (i.e., lowerBound)
@@ -345,6 +405,7 @@ namespace hnswlib {
                             if (!top_candidates.empty())
                                 lowerBound = top_candidates.top().first;
                         }
+                        
                     }
                 }
             }
@@ -422,7 +483,8 @@ namespace hnswlib {
 #ifdef COUNT_DIST_TIME
                             StopW stopw = StopW();
 #endif
-                            dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);    
+                            // Use pre-computed distance if available, otherwise compute it
+                            dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
 #ifdef COUNT_DIST_TIME
                             adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif                                         
@@ -536,7 +598,9 @@ namespace hnswlib {
 #ifdef COUNT_DIST_TIME
                             StopW stopw = StopW();
 #endif                            
-                            dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);    
+                            // Use pre-computed distance if available, otherwise compute it
+                            dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                            
 #ifdef COUNT_DIST_TIME
                             adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif                             
@@ -885,10 +949,23 @@ namespace hnswlib {
                 if (linkListSize)
                     output.write(linkLists_[i], linkListSize);
             }
+
+            /*
+            // Save number of centroids
+            writeBinaryPOD(output, num_centroids_);
+            
+            // If we have centroid data, save it
+            if (num_centroids_ > 0 && centroid_distances_memory_ != nullptr) {
+                // Write centroid distances for each element
+                for (size_t i = 0; i < cur_element_count; i++) {
+                    output.write(centroid_distances_memory_ + i * size_per_element_centroids_, size_per_element_centroids_);
+                }
+            }
+            */
             output.close();
         }
 
-        void loadIndex(const std::string &location, SpaceInterface<dist_t> *s, size_t max_elements_i=0) {
+        void loadIndex(const std::string &location, const std::string &distances, const std::string &centroids_path, SpaceInterface<dist_t> *s, size_t max_elements_i=0) {
             std::ifstream input(location, std::ios::binary);
 
             if (!input.is_open())
@@ -919,16 +996,13 @@ namespace hnswlib {
             readBinaryPOD(input, mult_);
             readBinaryPOD(input, ef_construction_);
 
-
             data_size_ = s->get_data_size();
             fstdistfunc_ = s->get_dist_func();
             dist_func_param_ = s->get_dist_func_param();
 
             auto pos=input.tellg();
 
-
             /// Optional - check if index is ok:
-
             input.seekg(cur_element_count * size_data_per_element_,input.cur);
             for (size_t i = 0; i < cur_element_count; i++) {
                 if(input.tellg() < 0 || input.tellg()>=total_filesize){
@@ -977,7 +1051,6 @@ namespace hnswlib {
                 readBinaryPOD(input, linkListSize);
                 if (linkListSize == 0) {
                     element_levels_[i] = 0;
-
                     linkLists_[i] = nullptr;
                 } else {
                     element_levels_[i] = linkListSize / size_links_per_element_;
@@ -993,8 +1066,86 @@ namespace hnswlib {
                     num_deleted_ += 1;
             }
 
-            input.close();
+            // Load distances from .fvecs file
+            if (!distances.empty()) {
+                std::ifstream dist_file(distances, std::ios::binary);
+                if (!dist_file.is_open()) {
+                    throw std::runtime_error("Cannot open distances file");
+                }
 
+                // Read the first vector's dimension
+                int32_t dim;
+                dist_file.read(reinterpret_cast<char*>(&dim), sizeof(int32_t));
+                if (!dist_file.good()) {
+                    throw std::runtime_error("Failed to read dimension from distances file");
+                }
+                
+                num_centroids_ = dim;
+                std::cerr << "Reading distances file with " << num_centroids_ << " centroids" << std::endl;
+                
+                // Calculate memory needed for centroid distances
+                size_per_element_centroids_ = num_centroids_ * sizeof(dist_t);
+                
+                // Allocate contiguous memory for all centroid distances
+                centroid_distances_memory_ = (char*)malloc(max_elements * size_per_element_centroids_);
+                if (centroid_distances_memory_ == nullptr) {
+                    throw std::runtime_error("Not enough memory: failed to allocate centroid distances memory");
+                }
+                
+                // Reset file pointer to beginning
+                dist_file.seekg(0, std::ios::beg);
+                
+                // Read distances for each base vector
+                for (size_t i = 0; i < cur_element_count; i++) {
+                    // Read dimension (should be the same for all vectors)
+                    int32_t current_dim;
+                    dist_file.read(reinterpret_cast<char*>(&current_dim), sizeof(int32_t));
+                    
+                    if (current_dim != dim) {
+                        std::cerr << "Vector " << i << " has dimension " << current_dim << " but expected " << dim << std::endl;
+                        throw std::runtime_error("Inconsistent dimension in distances file");
+                    }
+                    
+                    // Read the distance values directly into contiguous memory
+                    dist_file.read(centroid_distances_memory_ + i * size_per_element_centroids_, num_centroids_ * sizeof(float));
+                }
+                
+                dist_file.close();
+
+                // Load centroids
+                std::ifstream centroid_file(centroids_path, std::ios::binary);
+                if (!centroid_file.is_open()) {
+                    throw std::runtime_error("Cannot open centroid file");
+                }
+
+                // Initialize centroids vector
+                centroids_.resize(num_centroids_, std::vector<dist_t>());
+
+                // Read the centroid values
+                for (size_t i = 0; i < num_centroids_; i++) {
+                    int32_t centroid_dim;
+                    centroid_file.read(reinterpret_cast<char*>(&centroid_dim), sizeof(int32_t));
+                    
+                    std::vector<dist_t> temp_centroid(centroid_dim);
+                    centroid_file.read(reinterpret_cast<char*>(temp_centroid.data()), centroid_dim * sizeof(float));
+                    
+                    centroids_[i] = std::move(temp_centroid);
+                }
+
+                centroid_file.close();
+                
+                std::cerr << "Successfully loaded " << num_centroids_ << " centroids and distances for " << cur_element_count << " vectors" << std::endl;
+                
+            } else {
+                // No distances file provided, initialize with empty
+                num_centroids_ = 0;
+                size_per_element_centroids_ = 0;
+                centroid_distances_memory_ = nullptr;
+                centroids_.clear();
+            }
+            
+            input.close();
+            
             return;
         }
 
@@ -1321,6 +1472,13 @@ namespace hnswlib {
                 memset(linkLists_[cur_c], 0, size_links_per_element_ * curlevel + 1);
             }
 
+            // If we have centroid distances, we need to allocate space for this new element too
+            if (num_centroids_ > 0 && centroid_distances_memory_ != nullptr) {
+                // Initialize memory for this element - for now, set to zeros
+                // In a real application, you might compute the actual distances to centroids here
+                memset(centroid_distances_memory_ + cur_c * size_per_element_centroids_, 0, size_per_element_centroids_);
+            }
+
             if ((signed)currObj != -1) {
 
                 if (curlevel < maxlevelcopy) {
@@ -1404,7 +1562,6 @@ namespace hnswlib {
             // StopW stopw = StopW();
 
             for (int level = maxlevel_; level > 0; level--) {
-                
                 bool changed = true;
                 while (changed) {
                     
@@ -1521,5 +1678,4 @@ namespace hnswlib {
         }
 
     };
-
 }
