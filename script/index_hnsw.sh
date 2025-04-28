@@ -4,7 +4,7 @@ g++ -o ./src/index_hnsw ./src/index_hnsw.cpp -I ./src/ -O3 -I /usr/include/eigen
 
 efConstruction=500
 M=32
-datasets=('sift' 'deep1M')
+datasets=('sift' 'gist' 'nuswide' 'msong')
 
 for data in "${datasets[@]}"
 do  

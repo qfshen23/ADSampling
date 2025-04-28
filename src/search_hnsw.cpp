@@ -88,15 +88,20 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     cout << "ef = " << appr_alg.ef_ << " k = " << k << endl;
     cout << "Recall = " << recall * 100.0 << "%\t" << endl;
     cout << "QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
+    cout << "Total number of DCO = " << adsampling::tot_full_dist << endl;
+    cout << "Step 1 propotion = " << adsampling::time1 / total_time * 100 << "%" << endl;
+    cout << "Step 2 propotion = " << adsampling::time2 / total_time * 100 << "%" << endl;
+    cout << "Step 3 propotion = " << adsampling::time3 / total_time * 100 << "%" << endl;
+    cout << "Pre-processing propotion = " << adsampling::time4 / total_time * 100 << "%" << endl;
     // cout << "Time1 = " << adsampling::time1 << " us" << endl;
     // cout << "Time2 = " << adsampling::time2 << " us" << endl;
-    cout << "Distance time = " << adsampling::distance_time << " us" << endl;
-    cout << "Pruning time = " << adsampling::time3 << " us" << endl;
-    cout << "Total time = " << total_time << " us" << endl;
-    cout << "Total distance computation = " << adsampling::tot_dist_calculation << endl;
-    cout << "Total distance = " << adsampling::tot_full_dist << endl;
-    cout << "Total prune = " << adsampling::tot_prune << endl;
-    cout << "Total tt = " << adsampling::tt / qsize << endl;
+    // cout << "Distance time = " << adsampling::distance_time << " us" << endl;
+    // cout << "Pruning time = " << adsampling::time3 << " us" << endl;
+    // cout << "Total time = " << total_time << " us" << endl;
+    // cout << "Total distance computation = " << adsampling::tot_dist_calculation << endl;
+    
+    // cout << "Total prune = " << adsampling::tot_prune << endl;
+    // cout << "Total tt = " << adsampling::tt / qsize << endl;
     // cout << appr_alg.ef_ << " " << recall * 100.0 << " " << time_us_per_query << " " << adsampling::tot_dimension + adsampling::tot_full_dist * vecdim << endl;
     return ;
 }

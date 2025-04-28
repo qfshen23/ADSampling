@@ -26,6 +26,7 @@ We have included detailed comments in these functions.
 #include <assert.h>
 #include <unordered_set>
 #include <list>
+#include <set>
 
 using namespace std;
 
@@ -300,9 +301,11 @@ namespace hnswlib {
             vl_type *visited_array = vl->mass;
             vl_type visited_array_tag = vl->curV;
 
-            int ef1 = 2000, ef2 = 1000, ef3 = 100, dcos = 500;
+            int ef1 = 1000, ef2 = 500, ef3 = 50, dcos = 200;
 
-            // Compute distances from query to all centroids
+            StopW stopw = StopW();
+
+            // Compute distances from query to all landmarks
             std::vector<dist_t> query_to_centroids;
             if (num_centroids_ > 0) {
                 query_to_centroids.resize(num_centroids_);
@@ -322,6 +325,7 @@ namespace hnswlib {
             // Insert the entry point to the result and search set with its exact distance as a key. 
             if (!has_deletions || !isMarkedDeleted(ep_id)) {
                 dist_t dist = fstdistfunc_(data_point, getDataByInternalId(ep_id), dist_func_param_);
+                adsampling::tot_full_dist ++;
                 lowerBound = dist;
                 top_candidates.emplace(dist, ep_id);
                 candidate_set.emplace(-dist, ep_id);
@@ -335,8 +339,12 @@ namespace hnswlib {
 
             // Phase 1, execute 'dcos' times exact distance calculation to find a better entry point
             int cnt_dcos = 1;
-            // tableint minn_id = ep_id;
             dist_t lowerBound_for_candidates = lowerBound;
+            // visited_array[ep_id] = visited_array_tag;
+
+            adsampling::time4 += stopw.getElapsedTimeMicro();
+
+            StopW stopw1 = StopW();
 
             while (!candidate_set.empty() && cnt_dcos < dcos) {
                 std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
@@ -348,9 +356,13 @@ namespace hnswlib {
 
                 for (size_t j = 1; j <= size; j++) {
                     int candidate_id = *(data + j);
+                    // if(visited_array[candidate_id] == visited_array_tag) continue;
+                    
+                    // visited_array[candidate_id] = visited_array_tag;
                     char *currObj1 = (getDataByInternalId(candidate_id));
                     dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);       
                     cnt_dcos ++;
+                    adsampling::tot_full_dist ++;
 
                     // if (dist < minn_dist) {
                     //     minn_dist = dist;
@@ -368,16 +380,29 @@ namespace hnswlib {
                         if (!candidates_for_candidates.empty())
                             lowerBound_for_candidates = candidates_for_candidates.top().first;
                     }
-
                 }
             }
+
+            // visited_list_pool_->releaseVisitedList(vl);
+            // vl = visited_list_pool_->getFreeVisitedList();
+            // visited_array = vl->mass;
+            // visited_array_tag = vl->curV;
+
+            adsampling::time1 += stopw1.getElapsedTimeMicro();
+
+            StopW stopw2 = StopW();
 
             // Phase 2, execute BFS from minn_id
             std::vector<std::pair<dist_t, tableint>> candidates;
             std::queue<tableint> queue;
+
+            // std::set<tableint> SS;
+
+            // std::cerr << "candidates_for_candidates size: " << candidates_for_candidates.size() << std::endl;
             
             while (!candidates_for_candidates.empty()) {
                 tableint candidate_id = candidates_for_candidates.top().second;
+                // SS.insert(candidate_id);
                 candidates_for_candidates.pop();
                 
                 visited_array[candidate_id] = visited_array_tag;
@@ -390,6 +415,8 @@ namespace hnswlib {
                 candidates.emplace_back(dist, candidate_id);
                 queue.push(candidate_id);
             }
+
+            //std::cerr << "SS size: " << SS.size() << std::endl;
 
             
             int cnt_visit = 1;
@@ -418,6 +445,10 @@ namespace hnswlib {
                 }
             }
 
+            adsampling::time2 += stopw2.getElapsedTimeMicro();
+
+            StopW stopw3 = StopW();
+
             // partial sort the candidates by first ef2 elements
             std::partial_sort(candidates.begin(), candidates.begin() + std::min(ef1, (int)candidates.size()), candidates.end(), CompareByFirst());
 
@@ -425,6 +456,7 @@ namespace hnswlib {
             for (size_t i = 0; i < std::min(ef2, (int)candidates.size()); i++) {
                 tableint candidate_id = candidates[i].second;
                 dist_t dist = fstdistfunc_(data_point, getDataByInternalId(candidate_id), dist_func_param_);
+                adsampling::tot_full_dist ++;
                 if (top_candidates.size() < ef || lowerBound > dist) {                      
                     if (!has_deletions || !isMarkedDeleted(candidate_id))
                         top_candidates.emplace(dist, candidate_id);
@@ -437,7 +469,9 @@ namespace hnswlib {
                 }
             }
 
-            adsampling::tot_dist_calculation += cnt_visit;
+            adsampling::time3 += stopw3.getElapsedTimeMicro();
+
+            // adsampling::tot_dist_calculation += cnt_visit;
             visited_list_pool_->releaseVisitedList(vl);
             return top_candidates;
         }

@@ -45,7 +45,7 @@ do
 
         # sift_distances_64.fvecs
         distances="${data_path}/${data}_distances_${K}.fvecs"
-        
+
         # sudo perf record -g 
         ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -t ${trans} -c ${distances} -l ${centroids}
     done
