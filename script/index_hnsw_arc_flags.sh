@@ -1,8 +1,8 @@
 cd ..
 
-g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/ -I /usr/include/eigen3 
+g++ -o ./src/index_hnsw_arc_flags ./src/index_hnsw_arc_flags.cpp -I ./src/ -O3 -I /usr/include/eigen3 -fopenmp 
 
-ef=500
+efConstruction=500
 M=32
 datasets=('sift')
 K=64
@@ -21,7 +21,6 @@ do
 
         data_path=/data/vector_datasets/${data}
         index_path=/data/tmp/hnsw/${data}
-        result_path=./results
 
         if [ ! -d "$index_path" ]; then 
             mkdir -p "$index_path"
@@ -30,22 +29,19 @@ do
         if [ $adaptive == "0" ] # raw vectors 
         then
             data_file="${data_path}/${data}_base.fvecs"
+            centroid_file="${data_path}/${data}_centroid_${C}.fvecs"
         else                    # preprocessed vectors                  
             data_file="${data_path}/O${data}_base.fvecs"
+            centroid_file="${data_path}/O${data}_centroid_${C}.fvecs"
         fi
 
-        # 0 - IVF, 1 - IVF++, 2 - IVF+
-        index_file="${index_path}/O${data}_ef${ef}_M${M}.index"
-        res="${result_path}/${data}_ef${ef}_M${M}_${adaptive}.log"
-        query="${data_path}/${data}_query.fvecs"
-        gnd="${data_path}/${data}_groundtruth.ivecs"
-        trans="${data_path}/O.fvecs"
-
         depth=1
+        cluster_ids_file="${data_path}/${data}_cluster_id_${K}.ivecs" 
+        index_file="${index_path}/O${data}_ef${efConstruction}_M${M}.index"
+        flags_file="${index_path}/${data}_ef${efConstruction}_M${M}_arcflags_dep${depth}.index"
+        echo $index_file
+        echo $flags_file
 
-        flags_file="${index_path}/${data}_ef${ef}_M${M}_arcflags_dep${depth}.index"
-        centroid_file="${data_path}/${data}_centroid_${K}.fvecs"
-
-        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -t ${trans} -f ${flags_file} -c ${centroid_file}
+        ./src/index_hnsw_arc_flags -d $data_file -i $index_file -e $efConstruction -m $M -t $depth -c $cluster_ids_file -f $flags_file
     done
 done

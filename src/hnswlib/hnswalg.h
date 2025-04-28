@@ -27,6 +27,7 @@ We have included detailed comments in these functions.
 #include <assert.h>
 #include <unordered_set>
 #include <list>
+#include <queue>
 
 using namespace std;
 
@@ -41,8 +42,15 @@ namespace hnswlib {
         HierarchicalNSW(SpaceInterface<dist_t> *s) {
         }
 
-        HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, bool nmslib = false, size_t max_elements=0) {
+        // HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, bool nmslib = false, size_t max_elements=0) {
+        //     loadIndex(location, s, max_elements);
+        // }
+        
+        HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, const std::string &centroid_path = "", bool nmslib = false, size_t max_elements=0) {
             loadIndex(location, s, max_elements);
+            if (!centroid_path.empty()) {
+                loadCentroids(centroid_path);
+            }
         }
 
         HierarchicalNSW(SpaceInterface<dist_t> *s, size_t max_elements, size_t M = 16, size_t ef_construction = 200, size_t random_seed = 100) :
@@ -104,6 +112,22 @@ namespace hnswlib {
             }
             free(linkLists_);
             delete visited_list_pool_;
+            
+            // Free cluster flags and centroids
+            if (cluster_flags_ != nullptr) {
+                free(cluster_flags_);
+                cluster_flags_ = nullptr;
+            }
+            
+            if (centroids_ != nullptr) {
+                for (size_t i = 0; i < num_centroids_; i++) {
+                    if (centroids_[i] != nullptr) {
+                        free(centroids_[i]);
+                    }
+                }
+                free(centroids_);
+                centroids_ = nullptr;
+            }
         }
 
         size_t max_elements_;
@@ -267,6 +291,44 @@ namespace hnswlib {
             vl_type *visited_array = vl->mass;
             vl_type visited_array_tag = vl->curV;
 
+            // select the nearest two centroids
+            // size_t nearest_centroid1 = 0, nearest_centroid2 = 0;
+            // dist_t min_dist1 = std::numeric_limits<dist_t>::max();
+            // dist_t min_dist2 = std::numeric_limits<dist_t>::max();
+            // // Find the two nearest centroids to the query point
+            // if (has_centroids_) {
+            //     for (size_t i = 0; i < num_centroids_; i++) {
+            //         dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
+            //         adsampling::tot_full_dist ++;
+            //         if (dist < min_dist1) {
+            //             min_dist2 = min_dist1;
+            //             nearest_centroid2 = nearest_centroid1;
+            //             min_dist1 = dist;
+            //             nearest_centroid1 = i;
+            //         } else if (dist < min_dist2) {
+            //             min_dist2 = dist;
+            //             nearest_centroid2 = i;
+            //         }
+            //     }
+            // }
+            // uint64_t nearest_centroids_flags = (1ULL << nearest_centroid1) | (1ULL << nearest_centroid2);
+
+            size_t nearest_centroid = 0;
+            dist_t min_dist = std::numeric_limits<dist_t>::max();
+            // Find the  nearest centroid to the query point
+            if (has_centroids_) {
+                for (size_t i = 0; i < num_centroids_; i++) {
+                    dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
+                    adsampling::tot_full_dist ++;
+                    if (dist < min_dist) {
+                        min_dist = dist;
+                        nearest_centroid = i;
+                    }
+                }
+            }
+            uint64_t nearest_centroids_flags = 1ULL << nearest_centroid;
+            
+
             // top_candidates - the result set R
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
             // candidate_set  - the search set S
@@ -321,6 +383,12 @@ namespace hnswlib {
                     if (!(visited_array[candidate_id] == visited_array_tag)) {
                         cnt_visit ++;
                         visited_array[candidate_id] = visited_array_tag;
+
+                        // check the candidate_id whether contain the nearest centroid flag
+                        if (!(cluster_flags_[candidate_id] & nearest_centroids_flags)) {
+                            adsampling::pruned_by_flags++;
+                            continue;
+                        }
 
                         // Conduct DCO with FDScanning wrt the N_ef th NN: 
                         // (1) calculate its exact distance 
@@ -1517,9 +1585,280 @@ namespace hnswlib {
                 std::cout << "Min inbound: " << min1 << ", Max inbound:" << max1 << "\n";
             }
             std::cout << "integrity ok, checked " << connections_checked << " connections\n";
-
         }
 
+        // Compute arc flags for each node based on cluster IDs
+        void computeClusterFlags(const std::vector<uint8_t>& cluster_ids, size_t depth) {
+            if (cluster_ids.size() < cur_element_count) {
+                throw std::runtime_error("Number of cluster IDs is less than the number of elements in the index");
+            }
+
+            // Find the maximum cluster ID to determine the number of clusters
+            uint8_t max_cluster_id = 0;
+            for (size_t i = 0; i < cur_element_count; i++) {
+                if (cluster_ids[i] > max_cluster_id) {
+                    max_cluster_id = cluster_ids[i];
+                }
+            }
+            size_t num_clusters = max_cluster_id + 1;
+            
+            std::cout << "Found " << num_clusters << " clusters" << std::endl;
+            
+            // Ensure we can fit all clusters in a single uint64_t
+            if (num_clusters > 64) {
+                throw std::runtime_error("Too many clusters (>" + std::to_string(64) + "). Current implementation supports up to 64 clusters.");
+            }
+            
+            // Clean up existing flags if any
+            if (cluster_flags_ != nullptr) {
+                free(cluster_flags_);
+            }
+            
+            // Allocate memory for cluster flags
+            cluster_flags_ = (uint64_t*)calloc(cur_element_count, sizeof(uint64_t));
+            if (cluster_flags_ == nullptr) {
+                throw std::runtime_error("Failed to allocate memory for cluster flags");
+            }
+            num_cluster_flags_ = cur_element_count;
+            
+            std::cout << "Computing cluster flags with OpenMP..." << std::endl;
+            
+            // Parallelize the BFS computation with OpenMP
+            #pragma omp parallel for schedule(dynamic)
+            for (size_t i = 0; i < cur_element_count; i++) {
+                if (i % 10000 == 0) {
+                    #pragma omp critical
+                    {
+                        std::cout << "Processing node " << i << "/" << cur_element_count << std::endl;
+                    }
+                }
+                
+                // Skip deleted nodes
+                if (isMarkedDeleted(i)) {
+                    continue;
+                }
+                
+                // Mark the node's own cluster as reachable
+                uint8_t node_cluster = cluster_ids[i];
+                cluster_flags_[i] |= (1ULL << node_cluster);
+                
+                // BFS to find reachable clusters within the specified depth
+                std::queue<std::pair<tableint, size_t>> q; // (node, current_depth)
+                std::unordered_set<tableint> visited;
+                
+                q.push({i, 0});
+                visited.insert(i);
+                
+                while (!q.empty()) {
+                    auto [current, current_depth] = q.front();
+                    q.pop();
+                    
+                    // If we've reached the maximum depth, stop exploring further
+                    if (current_depth >= depth) {
+                        continue;
+                    }
+                    
+                    // Get neighbors at level 0 (the most detailed level)
+                    linklistsizeint *ll_cur = get_linklist0(current);
+                    int size = getListCount(ll_cur);
+                    tableint *neighbors = (tableint *) (ll_cur + 1);
+                    
+                    // Process each neighbor
+                    for (int j = 0; j < size; j++) {
+                        tableint neighbor = neighbors[j];
+                        
+                        // Skip deleted nodes
+                        if (isMarkedDeleted(neighbor)) {
+                            continue;
+                        }
+                        
+                        // Mark the neighbor's cluster as reachable from the starting node
+                        uint8_t neighbor_cluster = cluster_ids[neighbor];
+                        cluster_flags_[i] |= (1ULL << neighbor_cluster);
+                        
+                        // If we haven't visited this neighbor yet, add it to the queue
+                        if (visited.find(neighbor) == visited.end()) {
+                            visited.insert(neighbor);
+                            q.push({neighbor, current_depth + 1});
+                        }
+                    }
+                }
+            }
+            
+            std::cout << "Finished computing cluster flags" << std::endl;
+        }
+        
+        // Save the computed cluster flags to a file
+        void saveFlags(const std::string &filename) {
+            if (cluster_flags_ == nullptr || num_cluster_flags_ == 0) {
+                throw std::runtime_error("Cluster flags have not been computed yet");
+            }
+            
+            std::ofstream output(filename, std::ios::binary);
+            if (!output.is_open()) {
+                throw std::runtime_error("Cannot open file for writing: " + filename);
+            }
+            
+            // Write header information
+            size_t num_nodes = num_cluster_flags_;
+            
+            output.write(reinterpret_cast<char*>(&num_nodes), sizeof(size_t));
+            
+            // Write cluster flags for each node
+            output.write(reinterpret_cast<char*>(cluster_flags_), num_nodes * sizeof(uint64_t));
+            
+            output.close();
+            std::cout << "Saved cluster flags to " << filename << std::endl;
+        }
+        
+        // Load cluster flags from a file
+        void loadFlags(const std::string &filename) {
+            std::ifstream input(filename, std::ios::binary);
+            if (!input.is_open()) {
+                throw std::runtime_error("Cannot open file for reading: " + filename);
+            }
+            
+            // Read header information
+            size_t num_nodes;
+            input.read(reinterpret_cast<char*>(&num_nodes), sizeof(size_t));
+            
+            // Verify that the number of nodes matches our index
+            if (num_nodes != cur_element_count) {
+                std::cout << "Warning: Number of nodes in flags file (" << num_nodes 
+                          << ") does not match the current index (" << cur_element_count 
+                          << "). Using the smaller of the two." << std::endl;
+                num_nodes = std::min(num_nodes, cur_element_count);
+            }
+            
+            // Clean up existing flags if any
+            if (cluster_flags_ != nullptr) {
+                free(cluster_flags_);
+            }
+            
+            // Allocate memory for cluster flags
+            cluster_flags_ = (uint64_t*)calloc(cur_element_count, sizeof(uint64_t));
+            if (cluster_flags_ == nullptr) {
+                throw std::runtime_error("Failed to allocate memory for cluster flags");
+            }
+            num_cluster_flags_ = cur_element_count;
+            
+            // Read cluster flags
+            input.read(reinterpret_cast<char*>(cluster_flags_), num_nodes * sizeof(uint64_t));
+            
+            // Check if we've read the entire file
+            if (!input.eof() && input.fail()) {
+                std::cout << "Warning: Error occurred while reading flags file." << std::endl;
+            }
+            
+            input.close();
+        }
+
+        // Load centroids from a .fvecs file
+        void loadCentroids(const std::string &filename) {
+            std::ifstream input(filename, std::ios::binary);
+            if (!input.is_open()) {
+                throw std::runtime_error("Cannot open centroid file for reading: " + filename);
+            }
+            
+            // Read dimension from first 4 bytes
+            int dim;
+            input.read(reinterpret_cast<char*>(&dim), sizeof(int));
+            
+            // Get file size to calculate number of vectors
+            input.seekg(0, std::ios::end);
+            size_t fileSize = input.tellg();
+            input.seekg(0, std::ios::beg);
+            
+            // Each vector has dim + 1 floats (4 bytes each)
+            size_t bytesPerVector = (dim + 1) * sizeof(float);
+            size_t num_vectors = fileSize / bytesPerVector;
+            
+            // Clean up existing centroids if any
+            if (centroids_ != nullptr) {
+                for (size_t i = 0; i < num_centroids_; i++) {
+                    if (centroids_[i] != nullptr) {
+                        free(centroids_[i]);
+                    }
+                }
+                free(centroids_);
+            }
+            
+            // Allocate memory for centroids
+            centroids_ = (float**)malloc(num_vectors * sizeof(float*));
+            if (centroids_ == nullptr) {
+                throw std::runtime_error("Failed to allocate memory for centroids");
+            }
+            
+            // Initialize all pointers to nullptr
+            for (size_t i = 0; i < num_vectors; i++) {
+                centroids_[i] = nullptr;
+            }
+            
+            num_centroids_ = num_vectors;
+            centroid_dim_ = dim;
+            
+            // Temporary buffer for reading each centroid
+            std::vector<float> buf(dim + 1);
+            
+            // Read each centroid
+            for (size_t i = 0; i < num_vectors; i++) {
+                input.read(reinterpret_cast<char*>(buf.data()), (dim + 1) * sizeof(float));
+                
+                // Allocate memory for this centroid
+                centroids_[i] = (float*)malloc(dim * sizeof(float));
+                if (centroids_[i] == nullptr) {
+                    throw std::runtime_error("Failed to allocate memory for centroid");
+                }
+                
+                // Copy data (skip the first dimension value)
+                memcpy(centroids_[i], buf.data() + 1, dim * sizeof(float));
+            }
+            
+            has_centroids_ = true;
+            input.close();
+            std::cout << "Loaded " << num_vectors << " centroids with dimension " << dim << std::endl;
+        }
+        
+        // Get centroid for a specific cluster ID
+        const float* getCentroid(size_t cluster_id) const {
+            if (!has_centroids_) {
+                throw std::runtime_error("No centroids loaded");
+            }
+            
+            if (cluster_id >= num_centroids_) {
+                throw std::runtime_error("Cluster ID out of range");
+            }
+            
+            return centroids_[cluster_id];
+        }
+        
+        // Get centroid dimension
+        size_t getCentroidDim() const {
+            return centroid_dim_;
+        }
+        
+        // Get number of centroids
+        size_t getNumCentroids() const {
+            return num_centroids_;
+        }
+        
+        // Check if centroids are loaded
+        bool hasCentroids() const {
+            return has_centroids_;
+        }
+
+    private:
+        // Storage for cluster flags - for each node, stores which clusters are reachable in a single uint64_t
+        // Each bit in the uint64_t value represents a cluster
+        uint64_t* cluster_flags_ = nullptr;
+        size_t num_cluster_flags_ = 0;
+        
+        // Storage for centroids data
+        float** centroids_ = nullptr;
+        size_t num_centroids_ = 0;
+        size_t centroid_dim_ = 0;
+        bool has_centroids_ = false;
+    
     };
 
 }
