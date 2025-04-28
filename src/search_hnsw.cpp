@@ -88,9 +88,11 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     cout << "ef = " << appr_alg.ef_ << " k = " << k << endl;
     cout << "Recall = " << recall * 100.0 << "%\t" << endl;
     cout << "QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
+    cout << "Total full distance = " << adsampling::tot_full_dist << endl;
     // cout << "Time1 = " << adsampling::time1 << " us" << endl;
     // cout << "Time2 = " << adsampling::time2 << " us" << endl;
-    cout << "Distance time = " << adsampling::distance_time << " us" << endl;
+    // cout << "Distance time = " << adsampling::distance_time << " us" << endl;
+    cout << "Pruned by flags = " << adsampling::pruned_by_flags << endl;
     cout << "Total time = " << total_time << " us" << endl;
     // cout << appr_alg.ef_ << " " << recall * 100.0 << " " << time_us_per_query << " " << adsampling::tot_dimension + adsampling::tot_full_dist * vecdim << endl;
     return ;
@@ -100,8 +102,8 @@ static void test_vs_recall(float *massQ, size_t vecsize, size_t qsize, Hierarchi
                vector<std::priority_queue<std::pair<float, labeltype >>> &answers, size_t k, int adaptive) {
     vector<size_t> efs;
     efs.push_back(100);
-    efs.push_back(200);
-    efs.push_back(400);
+    // efs.push_back(200);
+    // efs.push_back(400);
     // efs.push_back(600);
     // efs.push_back(800);
     // efs.push_back(1000);
@@ -132,6 +134,8 @@ int main(int argc, char * argv[]) {
         {"groundtruth_path",            required_argument, 0, 'g'},
         {"result_path",                 required_argument, 0, 'r'},
         {"transformation_path",         required_argument, 0, 't'},
+        {"flags_path",                  required_argument, 0, 'f'},
+        {"centroid_path",               required_argument, 0, 'c'},
     };
 
     int ind;
@@ -144,12 +148,13 @@ int main(int argc, char * argv[]) {
     char result_path[256] = "";
     char dataset[256] = "";
     char transformation_path[256] = "";
-
+    char flags_path[256] = "";
+    char centroid_path[256] = "";
     int randomize = 0;
     int subk=100;
 
     while(iarg != -1){
-        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:", longopts, &ind);
+        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:f:c:", longopts, &ind);
         switch (iarg){
             case 'd':
                 if(optarg)randomize = atoi(optarg);
@@ -181,6 +186,12 @@ int main(int argc, char * argv[]) {
             case 'n':
                 if(optarg)strcpy(dataset, optarg);
                 break;
+            case 'f':
+                if(optarg)strcpy(flags_path, optarg);
+                break;
+            case 'c':
+                if(optarg)strcpy(centroid_path, optarg);
+                break;
         }
     }   
 
@@ -197,7 +208,12 @@ int main(int argc, char * argv[]) {
     }
     
     L2Space l2space(Q.d);
-    HierarchicalNSW<float> *appr_alg = new HierarchicalNSW<float>(&l2space, index_path, false);
+    HierarchicalNSW<float> *appr_alg = new HierarchicalNSW<float>(&l2space, index_path, centroid_path, false);
+
+    // Load flags if provided
+    if (flags_path != "") {
+        appr_alg->loadFlags(flags_path);
+    }
 
     size_t k = G.d;
 

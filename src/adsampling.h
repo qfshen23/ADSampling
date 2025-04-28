@@ -28,6 +28,7 @@ unsigned long long tot_full_dist = 0;
 long double time1 = 0, time2 = 0, time3 = 0, time4 = 0;
 unsigned long long cntt = 0;
 unsigned long long dist_cnt = 0;
+unsigned long long pruned_by_flags = 0;
 std::vector<float> diskK_vec;
 
 void clear() {
@@ -37,7 +38,7 @@ void clear() {
     tot_dist_calculation = 0;
     tot_full_dist = 0;
     time1 = time2 = time3 = time4 = 0;
-    cntt = dist_cnt = 0;
+    cntt = dist_cnt = pruned_by_flags = 0;
     diskK_vec.clear();
 }
 
