@@ -4,7 +4,7 @@ g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/ -I /usr/include/eig
 
 ef=500
 M=32
-datasets=('sift')
+datasets=('nuswide')
 K=64
 
 for data in "${datasets[@]}"
@@ -39,13 +39,12 @@ do
         res="${result_path}/${data}_ef${ef}_M${M}_${adaptive}.log"
         query="${data_path}/${data}_query.fvecs"
         gnd="${data_path}/${data}_groundtruth.ivecs"
-        trans="${data_path}/O.fvecs"
 
-        depth=1
+        depth=2
 
         flags_file="${index_path}/${data}_ef${ef}_M${M}_arcflags_dep${depth}.index"
-        centroid_file="${data_path}/${data}_centroid_${K}.fvecs"
+        # centroid_file="${data_path}/${data}_centroid_${K}.fvecs"
 
-        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -t ${trans} -f ${flags_file} -c ${centroid_file}
+        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} # -f ${flags_file} # -c ${centroid_file}
     done
 done
