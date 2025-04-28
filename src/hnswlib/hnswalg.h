@@ -42,16 +42,16 @@ namespace hnswlib {
         HierarchicalNSW(SpaceInterface<dist_t> *s) {
         }
 
-        // HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, bool nmslib = false, size_t max_elements=0) {
-        //     loadIndex(location, s, max_elements);
-        // }
-        
-        HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, const std::string &centroid_path = "", bool nmslib = false, size_t max_elements=0) {
+        HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, bool nmslib = false, size_t max_elements=0) {
             loadIndex(location, s, max_elements);
-            if (!centroid_path.empty()) {
-                loadCentroids(centroid_path);
-            }
         }
+        
+        // HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, const std::string &centroid_path = "", bool nmslib = false, size_t max_elements=0) {
+        //     loadIndex(location, s, max_elements);
+        //     if (!centroid_path.empty()) {
+        //         loadCentroids(centroid_path);
+        //     }
+        // }
 
         HierarchicalNSW(SpaceInterface<dist_t> *s, size_t max_elements, size_t M = 16, size_t ef_construction = 200, size_t random_seed = 100) :
                 link_list_locks_(max_elements), link_list_update_locks_(max_update_element_locks), element_levels_(max_elements) {
@@ -104,7 +104,6 @@ namespace hnswlib {
         };
 
         ~HierarchicalNSW() {
-
             free(data_level0_memory_);
             for (tableint i = 0; i < cur_element_count; i++) {
                 if (element_levels_[i] > 0)
@@ -313,20 +312,20 @@ namespace hnswlib {
             // }
             // uint64_t nearest_centroids_flags = (1ULL << nearest_centroid1) | (1ULL << nearest_centroid2);
 
-            size_t nearest_centroid = 0;
-            dist_t min_dist = std::numeric_limits<dist_t>::max();
-            // Find the  nearest centroid to the query point
-            if (has_centroids_) {
-                for (size_t i = 0; i < num_centroids_; i++) {
-                    dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
-                    adsampling::tot_full_dist ++;
-                    if (dist < min_dist) {
-                        min_dist = dist;
-                        nearest_centroid = i;
-                    }
-                }
-            }
-            uint64_t nearest_centroids_flags = 1ULL << nearest_centroid;
+            // size_t nearest_centroid = 0;
+            // dist_t min_dist = std::numeric_limits<dist_t>::max();
+            // // Find the  nearest centroid to the query point
+            // if (has_centroids_) {
+            //     for (size_t i = 0; i < num_centroids_; i++) {
+            //         dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
+            //         adsampling::tot_full_dist ++;
+            //         if (dist < min_dist) {
+            //             min_dist = dist;
+            //             nearest_centroid = i;
+            //         }
+            //     }
+            // }
+            // uint64_t nearest_centroids_flags = 1ULL << nearest_centroid;
             
 
             // top_candidates - the result set R
@@ -358,6 +357,9 @@ namespace hnswlib {
             visited_array[ep_id] = visited_array_tag;
             int cnt_visit = 0;
 
+            unordered_map<int, int> counts;
+            counts[ep_id] = 0;
+
             // Iteratively generate candidates and conduct DCOs to maintain the result set R.
             while (!candidate_set.empty()) {
                 std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
@@ -383,12 +385,13 @@ namespace hnswlib {
                     if (!(visited_array[candidate_id] == visited_array_tag)) {
                         cnt_visit ++;
                         visited_array[candidate_id] = visited_array_tag;
+                        counts[candidate_id] = counts[current_node_id] + 1;
 
                         // check the candidate_id whether contain the nearest centroid flag
-                        if (!(cluster_flags_[candidate_id] & nearest_centroids_flags)) {
-                            adsampling::pruned_by_flags++;
-                            continue;
-                        }
+                        // if (!(cluster_flags_[candidate_id] & nearest_centroids_flags)) {
+                        //     adsampling::pruned_by_flags++;
+                        //     continue;
+                        // }
 
                         // Conduct DCO with FDScanning wrt the N_ef th NN: 
                         // (1) calculate its exact distance 
@@ -416,6 +419,20 @@ namespace hnswlib {
                     }
                 }
             }
+
+            int sum_hops = 0;
+            auto new_top_candidates = top_candidates;
+            while(!new_top_candidates.size() > 100) {
+                new_top_candidates.top();
+            }
+
+            while (!new_top_candidates.empty()) {
+                auto top_candidate = new_top_candidates.top();
+                new_top_candidates.pop();
+                sum_hops += counts[top_candidate.second];
+            }
+            adsampling::avg_hop += (float)sum_hops / top_candidates.size();
+
             adsampling::tot_dist_calculation += cnt_visit;
             visited_list_pool_->releaseVisitedList(vl);
             return top_candidates;
