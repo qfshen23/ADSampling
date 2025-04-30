@@ -301,7 +301,7 @@ namespace hnswlib {
             vl_type *visited_array = vl->mass;
             vl_type visited_array_tag = vl->curV;
 
-            int ef1 = 1000, ef2 = 500, ef3 = 50, dcos = 200;
+            int ef1 = 800, ef2 = 600, ef3 = 100, dcos = 900;
 
             StopW stopw = StopW();
 
