@@ -199,12 +199,13 @@ int main(int argc, char * argv[]) {
     L2Space l2space(Q.d);
     HierarchicalNSW<float> *appr_alg = new HierarchicalNSW<float>(&l2space, index_path, false);
 
+    // appr_alg->printLayerStats();
+
     size_t k = G.d;
 
     vector<std::priority_queue<std::pair<float, labeltype >>> answers;
 
     get_gt(G.data, Q.data, appr_alg->max_elements_, Q.n, l2space, Q.d, answers, k, subk, *appr_alg);
     test_vs_recall(Q.data, appr_alg->max_elements_, Q.n, *appr_alg, Q.d, answers, subk, randomize);
-
     return 0;
 }

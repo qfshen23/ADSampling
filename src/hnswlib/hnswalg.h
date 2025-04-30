@@ -27,6 +27,7 @@ We have included detailed comments in these functions.
 #include <assert.h>
 #include <unordered_set>
 #include <list>
+#include <unordered_map>
 
 using namespace std;
 
@@ -1520,6 +1521,19 @@ namespace hnswlib {
 
         }
 
-    };
+        void printLayerStats() const {
+            std::unordered_map<int, int> layer_counts;
+            for (size_t i = 0; i < cur_element_count; ++i) {
+                int level = element_levels_[i];
+                for (int l = 0; l <= level; ++l) {
+                    layer_counts[l]++;
+                }
+            }
 
+            std::cout << "HNSW layer statistics:" << std::endl;
+            for (int l = maxlevel_; l >= 0; --l) {
+                std::cout << "  Layer " << l << ": " << layer_counts[l] << " nodes" << std::endl;
+            }
+        }
+    };
 }
