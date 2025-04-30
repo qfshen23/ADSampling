@@ -420,18 +420,18 @@ namespace hnswlib {
                 }
             }
 
-            int sum_hops = 0;
-            auto new_top_candidates = top_candidates;
-            while(!new_top_candidates.size() > 100) {
-                new_top_candidates.top();
-            }
+            // int sum_hops = 0;
+            // auto new_top_candidates = top_candidates;
+            // while(!new_top_candidates.size() > 100) {
+            //     new_top_candidates.top();
+            // }
 
-            while (!new_top_candidates.empty()) {
-                auto top_candidate = new_top_candidates.top();
-                new_top_candidates.pop();
-                sum_hops += counts[top_candidate.second];
-            }
-            adsampling::avg_hop += (float)sum_hops / top_candidates.size();
+            // while (!new_top_candidates.empty()) {
+            //     auto top_candidate = new_top_candidates.top();
+            //     new_top_candidates.pop();
+            //     sum_hops += counts[top_candidate.second];
+            // }
+            // adsampling::avg_hop += (float)sum_hops / top_candidates.size();
 
             adsampling::tot_dist_calculation += cnt_visit;
             visited_list_pool_->releaseVisitedList(vl);

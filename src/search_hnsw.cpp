@@ -103,8 +103,8 @@ static void test_vs_recall(float *massQ, size_t vecsize, size_t qsize, Hierarchi
                vector<std::priority_queue<std::pair<float, labeltype >>> &answers, size_t k, int adaptive) {
     vector<size_t> efs;
     efs.push_back(100);
-    efs.push_back(200);
-    efs.push_back(400);
+    // efs.push_back(200);
+    // efs.push_back(400);
     // efs.push_back(600);
     // efs.push_back(800);
     // efs.push_back(1000);

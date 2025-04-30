@@ -4,7 +4,7 @@ g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/ -I /usr/include/eig
 
 ef=500
 M=32
-datasets=('nuswide')
+datasets=('sift')
 K=64
 
 for data in "${datasets[@]}"
