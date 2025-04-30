@@ -31,6 +31,7 @@ unsigned long long dist_cnt = 0;
 unsigned long long pruned_by_flags = 0;
 std::vector<float> diskK_vec;
 float avg_hop = 0.0;
+float avg_flat = 0.0;
 
 void clear() {
     distance_time = 0;
@@ -41,6 +42,7 @@ void clear() {
     time1 = time2 = time3 = time4 = 0;
     cntt = dist_cnt = pruned_by_flags = 0;
     avg_hop = 0.0;
+    avg_flat = 0.0;
     diskK_vec.clear();
 }
 
