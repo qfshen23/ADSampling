@@ -89,11 +89,12 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     cout << "Recall = " << recall * 100.0 << "%\t" << endl;
     cout << "QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
     cout << "Total full distance = " << adsampling::tot_full_dist << endl;
-    // cout << "Time1 = " << adsampling::time1 << " us" << endl;
+    cout << "Time1 = " << adsampling::time1 << " us" << endl;
     // cout << "Time2 = " << adsampling::time2 << " us" << endl;
     // cout << "Distance time = " << adsampling::distance_time << " us" << endl;
     cout << "Pruned by flags = " << adsampling::pruned_by_flags << endl;
-    cout << "Avg hop = " << adsampling::avg_hop / qsize << endl;
+    cout << "Avg flags = " << adsampling::avg_flat / adsampling::tot_full_dist << endl;
+    // cout << "Avg hop = " << adsampling::avg_hop / qsize << endl;
     cout << "Total time = " << total_time << " us" << endl;
     // cout << appr_alg.ef_ << " " << recall * 100.0 << " " << time_us_per_query << " " << adsampling::tot_dimension + adsampling::tot_full_dist * vecdim << endl;
     return ;
@@ -103,8 +104,8 @@ static void test_vs_recall(float *massQ, size_t vecsize, size_t qsize, Hierarchi
                vector<std::priority_queue<std::pair<float, labeltype >>> &answers, size_t k, int adaptive) {
     vector<size_t> efs;
     efs.push_back(100);
-    // efs.push_back(200);
-    // efs.push_back(400);
+    efs.push_back(200);
+    efs.push_back(400);
     // efs.push_back(600);
     // efs.push_back(800);
     // efs.push_back(1000);
@@ -209,12 +210,14 @@ int main(int argc, char * argv[]) {
     }
     
     L2Space l2space(Q.d);
-    HierarchicalNSW<float> *appr_alg = new HierarchicalNSW<float>(&l2space, index_path, false);
+    // HierarchicalNSW<float> *appr_alg = new HierarchicalNSW<float>(&l2space, index_path, false);
 
-    // // Load flags if provided
-    // if (flags_path != "") {
-    //     appr_alg->loadFlags(flags_path);
-    // }
+    HierarchicalNSW<float> *appr_alg = new HierarchicalNSW<float>(&l2space, index_path, centroid_path, false);
+
+    // Load flags if provided
+    if (flags_path != "") {
+        appr_alg->loadFlags(flags_path);
+    }
 
     size_t k = G.d;
 

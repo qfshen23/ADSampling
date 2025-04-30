@@ -40,11 +40,13 @@ do
         query="${data_path}/${data}_query.fvecs"
         gnd="${data_path}/${data}_groundtruth.ivecs"
 
-        depth=2
+        depth=1
 
         flags_file="${index_path}/${data}_ef${ef}_M${M}_arcflags_dep${depth}.index"
-        # centroid_file="${data_path}/${data}_centroid_${K}.fvecs"
+        centroid_file="${data_path}/${data}_centroid_${K}.fvecs"
 
-        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} # -f ${flags_file} # -c ${centroid_file}
+        # sudo perf stat -e branch-misses,branch-instructions  
+
+        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -f ${flags_file} -c ${centroid_file}
     done
 done

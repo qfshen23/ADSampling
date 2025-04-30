@@ -42,16 +42,16 @@ namespace hnswlib {
         HierarchicalNSW(SpaceInterface<dist_t> *s) {
         }
 
-        HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, bool nmslib = false, size_t max_elements=0) {
-            loadIndex(location, s, max_elements);
-        }
-        
-        // HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, const std::string &centroid_path = "", bool nmslib = false, size_t max_elements=0) {
+        // HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, bool nmslib = false, size_t max_elements=0) {
         //     loadIndex(location, s, max_elements);
-        //     if (!centroid_path.empty()) {
-        //         loadCentroids(centroid_path);
-        //     }
         // }
+        
+        HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, const std::string &centroid_path = "", bool nmslib = false, size_t max_elements=0) {
+            loadIndex(location, s, max_elements);
+            if (!centroid_path.empty()) {
+                loadCentroids(centroid_path);
+            }
+        }
 
         HierarchicalNSW(SpaceInterface<dist_t> *s, size_t max_elements, size_t M = 16, size_t ef_construction = 200, size_t random_seed = 100) :
                 link_list_locks_(max_elements), link_list_update_locks_(max_update_element_locks), element_levels_(max_elements) {
@@ -315,7 +315,7 @@ namespace hnswlib {
             // size_t nearest_centroid = 0;
             // dist_t min_dist = std::numeric_limits<dist_t>::max();
             // // Find the  nearest centroid to the query point
-            // if (has_centroids_) {
+            // // if (has_centroids_) {
             //     for (size_t i = 0; i < num_centroids_; i++) {
             //         dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
             //         adsampling::tot_full_dist ++;
@@ -324,9 +324,9 @@ namespace hnswlib {
             //             nearest_centroid = i;
             //         }
             //     }
-            // }
+            // // }
             // uint64_t nearest_centroids_flags = 1ULL << nearest_centroid;
-            
+
 
             // top_candidates - the result set R
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
@@ -357,8 +357,8 @@ namespace hnswlib {
             visited_array[ep_id] = visited_array_tag;
             int cnt_visit = 0;
 
-            unordered_map<int, int> counts;
-            counts[ep_id] = 0;
+            // unordered_map<int, int> counts;
+            // counts[ep_id] = 0;
 
             // Iteratively generate candidates and conduct DCOs to maintain the result set R.
             while (!candidate_set.empty()) {
@@ -385,13 +385,19 @@ namespace hnswlib {
                     if (!(visited_array[candidate_id] == visited_array_tag)) {
                         cnt_visit ++;
                         visited_array[candidate_id] = visited_array_tag;
-                        counts[candidate_id] = counts[current_node_id] + 1;
 
-                        // check the candidate_id whether contain the nearest centroid flag
-                        // if (!(cluster_flags_[candidate_id] & nearest_centroids_flags)) {
+                        // counts[candidate_id] = counts[current_node_id] + 1;
+
+                        // StopW stopww = StopW();
+                        // // check the candidate_id whether contain the nearest centroid flag
+                        // if ((cluster_flags_[candidate_id] & nearest_centroids_flags) == 0) {
                         //     adsampling::pruned_by_flags++;
+                        //     adsampling::time1 += stopww.getElapsedTimeMicro();
                         //     continue;
                         // }
+                        // adsampling::time1 += stopww.getElapsedTimeMicro();
+
+                        // adsampling::avg_flat += __builtin_popcount(cluster_flags_[candidate_id]);
 
                         // Conduct DCO with FDScanning wrt the N_ef th NN: 
                         // (1) calculate its exact distance 
