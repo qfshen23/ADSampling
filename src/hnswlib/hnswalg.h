@@ -27,6 +27,7 @@ We have included detailed comments in these functions.
 #include <unordered_set>
 #include <list>
 #include <set>
+#include <unordered_map>
 
 using namespace std;
 
@@ -132,6 +133,9 @@ namespace hnswlib {
         std::mutex cur_element_count_guard_;
 
         std::vector<std::mutex> link_list_locks_;
+
+        mutable std::unordered_map<tableint, std::vector<tableint>> search_tree_;
+        mutable tableint entry_id_;
 
         // Locks to prevent race condition during update/insert of an element at same time.
         // Note: Locks for additions can also be used to prevent this race condition if the querying of KNN is not exposed along with update/inserts i.e multithread insert/update/query in parallel.
@@ -297,11 +301,14 @@ namespace hnswlib {
         template <bool has_deletions, bool collect_metrics=false>
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
         searchBaseLayerST(tableint ep_id, const void *data_point, size_t ef) const {
+            entry_id_ = ep_id;
+            search_tree_.clear();
+
             VisitedList *vl = visited_list_pool_->getFreeVisitedList();
             vl_type *visited_array = vl->mass;
             vl_type visited_array_tag = vl->curV;
 
-            int ef1 = 800, ef2 = 600, ef3 = 100, dcos = 900;
+            int ef1 = 800, ef2 = 600, ef3 = 100, dcos = 1000;
 
             StopW stopw = StopW();
 
@@ -364,6 +371,8 @@ namespace hnswlib {
                     cnt_dcos ++;
                     adsampling::tot_full_dist ++;
 
+                    search_tree_[current_node_id].push_back(candidate_id);
+
                     // if (dist < minn_dist) {
                     //     minn_dist = dist;
                     //     minn_id = candidate_id;
@@ -371,6 +380,7 @@ namespace hnswlib {
 
                     if (candidates_for_candidates.size() < ef3 || lowerBound_for_candidates > dist) {                      
                         candidate_set.emplace(-dist, candidate_id);
+                        
                         if (!has_deletions || !isMarkedDeleted(candidate_id))
                             candidates_for_candidates.emplace(dist, candidate_id);
 
@@ -1968,5 +1978,90 @@ namespace hnswlib {
 
         }
 
+        void analyzeSearchTree(tableint ep_id, const std::unordered_set<tableint>& groundtruth, const std::string& dot_output_path = "") const {
+            std::unordered_set<tableint> all_nodes;
+            std::unordered_map<tableint, int> depth;
+            std::unordered_set<tableint> expanded_nodes;
+
+            // BFS to get all nodes & depth
+            std::queue<std::pair<tableint, int>> q;
+            q.push({ep_id, 0});
+            depth[ep_id] = 0;
+
+            while (!q.empty()) {
+                auto [node, d] = q.front(); q.pop();
+                all_nodes.insert(node);
+                expanded_nodes.insert(node); // node appears as source
+
+                auto it = search_tree_.find(node);
+                if (it != search_tree_.end()) {
+                    for (auto child : it->second) {
+                        all_nodes.insert(child);
+                        if (depth.find(child) == depth.end()) {
+                            depth[child] = d + 1;
+                            q.push({child, d + 1});
+                        }
+                    }
+                }
+            }
+
+            // 1. Recall
+            int hit_count = 0;
+            for (auto gt : groundtruth) {
+                if (all_nodes.count(gt)) hit_count++;
+            }
+            float recall = static_cast<float>(hit_count) / groundtruth.size();
+            std::cout << "hit_count = " << hit_count << ", groundtruth.size() = " << groundtruth.size() << std::endl;
+            std::cout << "[Analyze] Tree Recall@100 = " << recall << std::endl;
+
+            // 2. Groundtruth depth
+            std::cout << "[Analyze] GT Node Depths:\n";
+            for (auto gt : groundtruth) {
+                if (depth.count(gt)) {
+                    std::cout << "  GT " << gt << " at depth " << depth[gt] << std::endl;
+                } else {
+                    std::cout << "  GT " << gt << " not reachable\n";
+                }
+            }
+
+            // 3. Reachable but not expanded
+            std::cout << "[Analyze] GT Reachable but Not Expanded:\n";
+            for (auto gt : groundtruth) {
+                if (all_nodes.count(gt) && !expanded_nodes.count(gt)) {
+                    std::cout << "  GT " << gt << " is reachable but not expanded\n";
+                }
+            }
+
+            // // 4. Optional: Export as DOT
+            // if (!dot_output_path.empty()) {
+            //     std::ofstream out(dot_output_path);
+            //     out << "digraph SearchTree {\n";
+            //     out << "    node [shape=circle];\n";
+
+            //     for (auto& [src, neighbors] : search_tree_) {
+            //         for (auto dst : neighbors) {
+            //             out << "    " << src << " -> " << dst;
+            //             if (groundtruth.count(dst)) {
+            //                 out << " [color=red, penwidth=2.0]";
+            //             }
+            //             out << ";\n";
+            //         }
+            //     }
+
+            //     // Mark ep_id
+            //     out << "    " << ep_id << " [shape=doublecircle, style=filled, fillcolor=lightblue];\n";
+
+            //     // Mark GT nodes not visited
+            //     for (auto gt : groundtruth) {
+            //         if (!all_nodes.count(gt)) {
+            //             out << "    " << gt << " [style=dotted, color=gray];\n";
+            //         }
+            //     }
+
+            //     out << "}\n";
+            //     out.close();
+            //     std::cout << "[Analyze] DOT output written to " << dot_output_path << std::endl;
+            // }
+        }
     };
 }

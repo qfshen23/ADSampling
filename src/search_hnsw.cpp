@@ -63,7 +63,7 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     adsampling::clear();
 
     for (int i = 0; i < qsize; i++) {
-
+        if(i != 1000) continue;
 #ifndef WIN32
         float sys_t, usr_t, usr_t_sum = 0;  
         struct rusage run_start, run_end;
@@ -78,9 +78,28 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
         total_time += usr_t * 1e6;
 #endif
         std::priority_queue<std::pair<float, labeltype >> gt(answers[i]);
+
+        // Convert ground truth queue to unordered_set for analysis
+        std::unordered_set<tableint> gt_set;
+        std::priority_queue<std::pair<float, labeltype>> gt_copy = gt;
+        while (!gt_copy.empty()) {
+            gt_set.insert(gt_copy.top().second);
+            gt_copy.pop();
+        }
+        
+        // void analyzeSearchTree(tableint ep_id, const std::unordered_set<tableint>& groundtruth, 
+        // const std::string& dot_output_path = "") {}
+        appr_alg.analyzeSearchTree(appr_alg.entry_id_, gt_set, "./search_tree.dot");
+        
+        std::cout << "entry_id_ = " << appr_alg.entry_id_ << std::endl;
+
+        for(auto &[key, value] : appr_alg.search_tree_) {
+            std::cout << "key = " << key << ", value = " << value.size() << std::endl;
+        }
+
         total += gt.size();
         int tmp = recall(result, gt);
-        correct += tmp;   
+        correct += tmp;           
     }
     long double time_us_per_query = total_time / qsize + rotation_time;
     long double recall = 1.0f * correct / total;
