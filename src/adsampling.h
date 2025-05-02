@@ -30,6 +30,11 @@ long double time1 = 0, time2 = 0, time3 = 0, time4 = 0;
 unsigned long long cntt = 0;
 unsigned long long dist_cnt = 0;
 float tt = 0.0;
+float first_recall = 0.0;
+float second_recall = 0.0;
+float effective_ratio = 0.0;
+unsigned long long cnt_prune_fail = 0;
+unsigned long long cnt_calculate_lower_bound = 0;
 std::vector<float> diskK_vec;
 
 void clear() {
@@ -42,7 +47,12 @@ void clear() {
     cntt = dist_cnt = 0;
     tot_prune = 0;
     tt = 0.0;
+    first_recall = 0.0;
+    second_recall = 0.0;
     diskK_vec.clear();
+    effective_ratio = 0.0;  
+    cnt_prune_fail = 0; 
+    cnt_calculate_lower_bound = 0;
 }
 
 // The hypothesis testing checks whether \sqrt{D/d} dis' > (1 +  epsilon0 / \sqrt{d}) * r.
