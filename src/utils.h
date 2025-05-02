@@ -25,7 +25,6 @@ public:
     void reset() {
         time_begin = std::chrono::high_resolution_clock::now();
     }
-
 };
 
 #ifndef WIN32

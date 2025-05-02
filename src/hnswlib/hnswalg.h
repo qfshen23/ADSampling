@@ -134,8 +134,9 @@ namespace hnswlib {
 
         std::vector<std::mutex> link_list_locks_;
 
-        mutable std::unordered_map<tableint, std::vector<tableint>> search_tree_;
+        mutable std::unordered_map<tableint, std::unordered_set<tableint>> search_tree_;
         mutable tableint entry_id_;
+        mutable std::vector<tableint> bfs_points_;
 
         // Locks to prevent race condition during update/insert of an element at same time.
         // Note: Locks for additions can also be used to prevent this race condition if the querying of KNN is not exposed along with update/inserts i.e multithread insert/update/query in parallel.
@@ -297,20 +298,171 @@ namespace hnswlib {
         mutable std::atomic<long> metric_distance_computations;
         mutable std::atomic<long> metric_hops;
 
+        template <bool has_deletions, bool collect_metrics=false>
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
+        searchBaseLayerST(tableint ep_id, const void *data_point, size_t ef) const {
+            VisitedList *vl = visited_list_pool_->getFreeVisitedList();
+            vl_type *visited_array = vl->mass;
+            vl_type visited_array_tag = vl->curV;
 
+            int ef3 = ef, dcos = 400;
+
+            // Compute distances from query to all landmarks
+            std::vector<dist_t> query_to_centroids;
+            if (num_centroids_ > 0) {
+                query_to_centroids.resize(num_centroids_);
+                for (size_t i = 0; i < num_centroids_; i++) {
+                    query_to_centroids[i] = fstdistfunc_(data_point, centroids_[i].data(), dist_func_param_);
+                }
+            }
+
+            // top_candidates - the result set R
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
+            // candidate_set  - the search set S
+            std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
+
+            dist_t lowerBound;
+            // Insert the entry point to the result and search set with its exact distance as a key. 
+            if (!has_deletions || !isMarkedDeleted(ep_id)) {
+                dist_t dist = fstdistfunc_(data_point, getDataByInternalId(ep_id), dist_func_param_);
+                adsampling::tot_full_dist ++;
+                lowerBound = dist;
+                top_candidates.emplace(dist, ep_id);
+                candidate_set.emplace(-dist, ep_id);
+            } 
+            else {
+                lowerBound = std::numeric_limits<dist_t>::max();
+                candidate_set.emplace(-lowerBound, ep_id);
+            }      
+
+            // Phase 1, execute 'dcos' times exact distance calculation to find a better entry point
+            int cnt_dcos = 1;
+            dist_t lowerBound_for_candidates = lowerBound;
+            visited_array[ep_id] = visited_array_tag;
+
+
+            while (!candidate_set.empty() && cnt_dcos < dcos) {
+                std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
+                candidate_set.pop();
+
+                tableint current_node_id = current_node_pair.second;
+                int *data = (int *) get_linklist0(current_node_id);
+                size_t size = getListCount((linklistsizeint*)data);
+
+                for (size_t j = 1; j <= size; j++) {
+                    int candidate_id = *(data + j);
+                    if(!(visited_array[candidate_id] == visited_array_tag)) {
+                        visited_array[candidate_id] = visited_array_tag;
+                    
+                        char *currObj1 = (getDataByInternalId(candidate_id));
+                        dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);       
+                        cnt_dcos ++;
+                        adsampling::tot_full_dist ++;
+
+                        if (candidate_set.size() < ef3 || lowerBound > dist) {                      
+                            candidate_set.emplace(-dist, candidate_id);
+                            
+                            if (!has_deletions || !isMarkedDeleted(candidate_id))
+                                top_candidates.emplace(dist, candidate_id);
+
+                            if (top_candidates.size() > ef3)
+                                top_candidates.pop();
+
+                            if (!top_candidates.empty())
+                                lowerBound = top_candidates.top().first;
+                        }
+                    }
+                }
+            }
+
+            int cnt_prune_fail = 0;
+            int cnt_calculate_lower_bound = 0;
+
+            // Phase 2, execute BFS from selected ef3 points
+            while (!candidate_set.empty()) {
+                std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
+
+                // When the smallest object in S has its distance larger than the largest in R, terminate the algorithm.
+                if ((-current_node_pair.first) > lowerBound && (top_candidates.size() == ef || has_deletions == false)) {
+                    break;
+                }
+                candidate_set.pop();
+
+                // Fetch the smallest object in S. 
+                tableint current_node_id = current_node_pair.second;
+                int *data = (int *) get_linklist0(current_node_id);
+                size_t size = getListCount((linklistsizeint*)data);
+
+                // Enumerate all the neighbors of the object and view them as candidates of KNNs. 
+                for (size_t j = 1; j <= size; j++) {
+                    int candidate_id = *(data + j);
+                    if (!(visited_array[candidate_id] == visited_array_tag)) {
+                        visited_array[candidate_id] = visited_array_tag;
+
+                        // Try to prune using triangle inequality with centroids
+                        dist_t* distances = (dist_t*)(centroid_distances_memory_ + candidate_id * size_per_element_centroids_);
+                        bool can_prune = false;
+                        // For each centroid, check if triangle inequality allows pruning
+                        for (size_t c = 0; c < num_centroids_; c++) {
+                            dist_t diff = std::abs(query_to_centroids[c] - distances[c]);
+                            can_prune |= (diff > lowerBound); // 无分支替代
+                        }
+                        cnt_calculate_lower_bound ++;
+                        if (can_prune) {
+                            continue;
+                        }
+
+                        cnt_prune_fail ++;
+                        
+                        // Conduct DCO with FDScanning wrt the N_ef th NN: 
+                        // (1) calculate its exact distance 
+                        // (2) compare it with the N_ef th distance (i.e., lowerBound)
+                        char *currObj1 = (getDataByInternalId(candidate_id));
+#ifdef COUNT_DIST_TIME
+                        StopW stopw = StopW();
+#endif
+                        dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+#ifdef COUNT_DIST_TIME
+                        adsampling::distance_time += stopw.getElapsedTimeMicro();
+#endif                  
+                        adsampling::tot_full_dist ++;
+                        if (top_candidates.size() < ef || lowerBound > dist) {                      
+                            candidate_set.emplace(-dist, candidate_id);
+                            if (!has_deletions || !isMarkedDeleted(candidate_id))
+                                top_candidates.emplace(dist, candidate_id);
+
+                            if (top_candidates.size() > ef)
+                                top_candidates.pop();
+
+                            if (!top_candidates.empty())
+                                lowerBound = top_candidates.top().first;
+                        }
+                        
+                    }
+                }
+            }
+            adsampling::cnt_calculate_lower_bound += cnt_calculate_lower_bound;
+            adsampling::cnt_prune_fail += cnt_prune_fail;
+            // adsampling::tot_dist_calculation += cnt_visit;
+            visited_list_pool_->releaseVisitedList(vl);
+            return top_candidates;
+        }
+
+        /*
         template <bool has_deletions, bool collect_metrics=false>
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
         searchBaseLayerST(tableint ep_id, const void *data_point, size_t ef) const {
             entry_id_ = ep_id;
-            search_tree_.clear();
+            search_tree_.clear();   
+            bfs_points_.clear();
 
             VisitedList *vl = visited_list_pool_->getFreeVisitedList();
             vl_type *visited_array = vl->mass;
             vl_type visited_array_tag = vl->curV;
 
-            int ef1 = 800, ef2 = 600, ef3 = 100, dcos = 1000;
+            int ef1 = 800, ef2 = 400, ef3 = 100, dcos = 800;
 
-            StopW stopw = StopW();
+            // StopW stopw = StopW();
 
             // Compute distances from query to all landmarks
             std::vector<dist_t> query_to_centroids;
@@ -347,11 +499,12 @@ namespace hnswlib {
             // Phase 1, execute 'dcos' times exact distance calculation to find a better entry point
             int cnt_dcos = 1;
             dist_t lowerBound_for_candidates = lowerBound;
-            // visited_array[ep_id] = visited_array_tag;
 
-            adsampling::time4 += stopw.getElapsedTimeMicro();
+            visited_array[ep_id] = visited_array_tag;
 
-            StopW stopw1 = StopW();
+            // adsampling::time4 += stopw.getElapsedTimeMicro();
+
+            // StopW stopw1 = StopW();
 
             while (!candidate_set.empty() && cnt_dcos < dcos) {
                 std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
@@ -363,58 +516,47 @@ namespace hnswlib {
 
                 for (size_t j = 1; j <= size; j++) {
                     int candidate_id = *(data + j);
-                    // if(visited_array[candidate_id] == visited_array_tag) continue;
+                    if(!(visited_array[candidate_id] == visited_array_tag)) {
+                        visited_array[candidate_id] = visited_array_tag;
                     
-                    // visited_array[candidate_id] = visited_array_tag;
-                    char *currObj1 = (getDataByInternalId(candidate_id));
-                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);       
-                    cnt_dcos ++;
-                    adsampling::tot_full_dist ++;
+                        char *currObj1 = (getDataByInternalId(candidate_id));
+                        dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);       
+                        cnt_dcos ++;
+                        adsampling::tot_full_dist ++;
 
-                    search_tree_[current_node_id].push_back(candidate_id);
+                        search_tree_[current_node_id].insert(candidate_id);
 
-                    // if (dist < minn_dist) {
-                    //     minn_dist = dist;
-                    //     minn_id = candidate_id;
-                    // }
+                        if (candidates_for_candidates.size() < ef3 || lowerBound_for_candidates > dist) {                      
+                            candidate_set.emplace(-dist, candidate_id);
+                            
+                            if (!has_deletions || !isMarkedDeleted(candidate_id))
+                                candidates_for_candidates.emplace(dist, candidate_id);
 
-                    if (candidates_for_candidates.size() < ef3 || lowerBound_for_candidates > dist) {                      
-                        candidate_set.emplace(-dist, candidate_id);
-                        
-                        if (!has_deletions || !isMarkedDeleted(candidate_id))
-                            candidates_for_candidates.emplace(dist, candidate_id);
+                            if (candidates_for_candidates.size() > ef3)
+                                candidates_for_candidates.pop();
 
-                        if (candidates_for_candidates.size() > ef3)
-                            candidates_for_candidates.pop();
-
-                        if (!candidates_for_candidates.empty())
-                            lowerBound_for_candidates = candidates_for_candidates.top().first;
+                            if (!candidates_for_candidates.empty())
+                                lowerBound_for_candidates = candidates_for_candidates.top().first;
+                        }
                     }
                 }
             }
 
-            // visited_list_pool_->releaseVisitedList(vl);
-            // vl = visited_list_pool_->getFreeVisitedList();
-            // visited_array = vl->mass;
-            // visited_array_tag = vl->curV;
+            // adsampling::time1 += stopw1.getElapsedTimeMicro();
 
-            adsampling::time1 += stopw1.getElapsedTimeMicro();
+            // StopW stopw2 = StopW();
 
-            StopW stopw2 = StopW();
+            vl->reset();
+            visited_array_tag = vl->curV;
 
-            // Phase 2, execute BFS from minn_id
+            // Phase 2, execute BFS from selected ef3 points
             std::vector<std::pair<dist_t, tableint>> candidates;
             std::queue<tableint> queue;
-
-            // std::set<tableint> SS;
-
-            // std::cerr << "candidates_for_candidates size: " << candidates_for_candidates.size() << std::endl;
             
             while (!candidates_for_candidates.empty()) {
                 tableint candidate_id = candidates_for_candidates.top().second;
-                // SS.insert(candidate_id);
                 candidates_for_candidates.pop();
-                
+
                 visited_array[candidate_id] = visited_array_tag;
 
                 dist_t dist = 0;
@@ -423,15 +565,13 @@ namespace hnswlib {
                     dist = std::max(dist, std::abs(query_to_centroids[c] - distances[c]));
                 }
                 candidates.emplace_back(dist, candidate_id);
+                bfs_points_.push_back(candidate_id);
                 queue.push(candidate_id);
             }
 
-            //std::cerr << "SS size: " << SS.size() << std::endl;
-
-            
             int cnt_visit = 1;
 
-            // execute BFS from ep_id and add them into candidates
+            // execute BFS from entry points and add them into candidates
             while(cnt_visit < ef1 && !queue.empty()) {
                 tableint current_node_id = queue.front();
                 queue.pop();
@@ -449,15 +589,16 @@ namespace hnswlib {
                             dist = std::max(dist, std::abs(query_to_centroids[c] - distances[c]));
                         }
                         candidates.emplace_back(dist, candidate_id);
+                        bfs_points_.push_back(candidate_id);
                         cnt_visit ++;
                         queue.push(candidate_id);
                     }
                 }
             }
 
-            adsampling::time2 += stopw2.getElapsedTimeMicro();
+            // adsampling::time2 += stopw2.getElapsedTimeMicro();
 
-            StopW stopw3 = StopW();
+            // StopW stopw3 = StopW();
 
             // partial sort the candidates by first ef2 elements
             std::partial_sort(candidates.begin(), candidates.begin() + std::min(ef1, (int)candidates.size()), candidates.end(), CompareByFirst());
@@ -479,15 +620,14 @@ namespace hnswlib {
                 }
             }
 
-            adsampling::time3 += stopw3.getElapsedTimeMicro();
+            // adsampling::time3 += stopw3.getElapsedTimeMicro();
 
             // adsampling::tot_dist_calculation += cnt_visit;
             visited_list_pool_->releaseVisitedList(vl);
             return top_candidates;
         }
+        */
         
-
-
         /*
         template <bool has_deletions, bool collect_metrics=false>
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
@@ -579,7 +719,6 @@ namespace hnswlib {
             return top_candidates;
         }
         */
-
         
         /*
         template <bool has_deletions, bool collect_metrics=false>
@@ -588,6 +727,9 @@ namespace hnswlib {
             VisitedList *vl = visited_list_pool_->getFreeVisitedList();
             vl_type *visited_array = vl->mass;
             vl_type visited_array_tag = vl->curV;
+
+            entry_id_ = ep_id;
+            search_tree_.clear();
 
             // top_candidates - the result set R
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
@@ -650,14 +792,14 @@ namespace hnswlib {
                     metric_distance_computations+=size;
                 }
 
-                
-
                 // Enumerate all the neighbors of the object and view them as candidates of KNNs. 
                 for (size_t j = 1; j <= size; j++) {
                     int candidate_id = *(data + j);
                     if (!(visited_array[candidate_id] == visited_array_tag)) {
                         cnt_visit ++;
                         visited_array[candidate_id] = visited_array_tag;
+
+                        search_tree_[current_node_id].insert(candidate_id);
 
                         // StopW stopww = StopW();
                         // Try to prune using triangle inequality with centroids
@@ -671,7 +813,7 @@ namespace hnswlib {
 
 
 
-                        // // adsampling::time3 += stopww.getElapsedTimeMicro();
+                        // adsampling::time3 += stopww.getElapsedTimeMicro();
 
                         // if (can_prune) {
                         //     adsampling::tot_prune++;
@@ -712,7 +854,6 @@ namespace hnswlib {
             visited_list_pool_->releaseVisitedList(vl);
             return top_candidates;
         }
-
         */
 
         template <bool has_deletions, bool collect_metrics=false>
@@ -1978,7 +2119,7 @@ namespace hnswlib {
 
         }
 
-        void analyzeSearchTree(tableint ep_id, const std::unordered_set<tableint>& groundtruth, const std::string& dot_output_path = "") const {
+        void analyzeSearchTree(tableint ep_id, const std::unordered_set<tableint>& groundtruth, const std::string& path = "") const {
             std::unordered_set<tableint> all_nodes;
             std::unordered_map<tableint, int> depth;
             std::unordered_set<tableint> expanded_nodes;
@@ -2011,56 +2152,110 @@ namespace hnswlib {
                 if (all_nodes.count(gt)) hit_count++;
             }
             float recall = static_cast<float>(hit_count) / groundtruth.size();
-            std::cout << "hit_count = " << hit_count << ", groundtruth.size() = " << groundtruth.size() << std::endl;
-            std::cout << "[Analyze] Tree Recall@100 = " << recall << std::endl;
+
+            adsampling::first_recall += recall;
 
             // 2. Groundtruth depth
-            std::cout << "[Analyze] GT Node Depths:\n";
-            for (auto gt : groundtruth) {
-                if (depth.count(gt)) {
-                    std::cout << "  GT " << gt << " at depth " << depth[gt] << std::endl;
-                } else {
-                    std::cout << "  GT " << gt << " not reachable\n";
-                }
-            }
+            // std::cout << "[Analyze] GT Node Depths:\n";
+            // for (auto gt : groundtruth) {
+            //     if (depth.count(gt)) {
+            //         std::cout << "  GT " << gt << " at depth " << depth[gt] << std::endl;
+            //     } else {
+            //         std::cout << "  GT " << gt << " not reachable\n";
+            //     }
+            // }
 
             // 3. Reachable but not expanded
-            std::cout << "[Analyze] GT Reachable but Not Expanded:\n";
-            for (auto gt : groundtruth) {
-                if (all_nodes.count(gt) && !expanded_nodes.count(gt)) {
-                    std::cout << "  GT " << gt << " is reachable but not expanded\n";
+            // std::cout << "[Analyze] GT Reachable but Not Expanded:\n";
+            // for (auto gt : groundtruth) {
+            //     if (all_nodes.count(gt) && !expanded_nodes.count(gt)) {
+            //         std::cout << "  GT " << gt << " is reachable but not expanded\n";
+            //     }
+            // }
+
+            int total_dco = 0;
+            int effective_dco = 0;
+
+            for (const auto& [src, children] : search_tree_) {
+                total_dco += children.size();
+
+                // 如果这个 src 曾扩展出 GT，则它的所有扩展都算有效
+                bool src_hits_gt = false;
+                for (tableint dst : children) {
+                    if (groundtruth.count(dst)) {
+                        src_hits_gt = true;
+                        break;
+                    }
+                }
+
+                if (src_hits_gt) {
+                    effective_dco += children.size();
                 }
             }
 
-            // // 4. Optional: Export as DOT
-            // if (!dot_output_path.empty()) {
-            //     std::ofstream out(dot_output_path);
-            //     out << "digraph SearchTree {\n";
-            //     out << "    node [shape=circle];\n";
+            float effective_ratio = static_cast<float>(effective_dco) / total_dco;
+            adsampling::effective_ratio += effective_ratio;
 
-            //     for (auto& [src, neighbors] : search_tree_) {
-            //         for (auto dst : neighbors) {
-            //             out << "    " << src << " -> " << dst;
-            //             if (groundtruth.count(dst)) {
-            //                 out << " [color=red, penwidth=2.0]";
-            //             }
-            //             out << ";\n";
-            //         }
+            // Calculate recall from BFS points
+            int bfs_hit_count = 0;
+            std::vector<tableint> bfs_copy = bfs_points_; // Make a copy since queue.front() is destructive
+            while (!bfs_copy.empty()) {
+                tableint point = bfs_copy.back();
+                bfs_copy.pop_back();
+                if (groundtruth.count(point)) {
+                    bfs_hit_count++;
+                }
+            }
+            float bfs_recall = static_cast<float>(bfs_hit_count) / groundtruth.size();
+            adsampling::second_recall += bfs_recall;
+
+            // // 4. Optional: Export as DOT
+            // if (!path.empty()) {
+            //     std::ofstream out(path);
+            //     if(!out) { std::cerr << "Cannot open " << path << std::endl; return; }
+
+            //     out << "digraph SearchTree {\n"
+            //         << "  rankdir=TB;\n"               // 从上到下
+            //         << "  node  [style=filled, fontname=\"Helvetica\"];\n";
+
+            //     /* --- 2.1 分层：同一 depth 用 {rank=same} --- */
+            //     std::unordered_map<int,std::vector<tableint>> rank_buckets;
+            //     for (auto& kv : depth) rank_buckets[kv.second].push_back(kv.first);
+            //     for (auto& rb : rank_buckets) {
+            //         out << "  { rank=same; ";
+            //         for (tableint v : rb.second) out << v << "; ";
+            //         out << "}\n";
             //     }
 
-            //     // Mark ep_id
-            //     out << "    " << ep_id << " [shape=doublecircle, style=filled, fillcolor=lightblue];\n";
+            //     /* --- 2.2 绘制节点 --- */
+            //     auto emit_node = [&](tableint v)
+            //     {
+            //         if (v == ep_id)         // 入口节点
+            //             out << v << " [shape=doublecircle, fillcolor=lightblue];\n";
+            //         else if (groundtruth.count(v))   // GT 命中
+            //             out << v << " [fillcolor=red, fontcolor=white];\n";
+            //         else                              // 普通访问节点
+            //             out << v << " [fillcolor=gray85];\n";
+            //     };
 
-            //     // Mark GT nodes not visited
-            //     for (auto gt : groundtruth) {
-            //         if (!all_nodes.count(gt)) {
-            //             out << "    " << gt << " [style=dotted, color=gray];\n";
+            //     for (auto& kv : depth) emit_node(kv.first);
+            //     // GT 未命中
+            //     for (tableint gt : groundtruth)
+            //         if(!depth.count(gt))
+            //             out << gt << " [style=dotted, fillcolor=white];\n";
+
+            //     /* --- 2.3 绘制边 --- */
+            //     for (auto& [src, nbrs] : search_tree_) {
+            //         for (tableint dst : nbrs) {
+            //             out << "  " << src << " -> " << dst;
+            //             if (groundtruth.count(dst))
+            //                 out << " [color=red, penwidth=2.0]";
+            //             out << ";\n";
             //         }
             //     }
 
             //     out << "}\n";
             //     out.close();
-            //     std::cout << "[Analyze] DOT output written to " << dot_output_path << std::endl;
             // }
         }
     };

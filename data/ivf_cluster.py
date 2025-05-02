@@ -4,7 +4,7 @@ import struct
 import os
 
 source = '/data/vector_datasets/'
-datasets = ['gist', 'sift']
+datasets = ['msong', 'nuswide']
 K = 64
 
 def read_fvecs(filename, c_contiguous=True):

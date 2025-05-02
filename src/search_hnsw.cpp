@@ -63,7 +63,6 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     adsampling::clear();
 
     for (int i = 0; i < qsize; i++) {
-        if(i != 1000) continue;
 #ifndef WIN32
         float sys_t, usr_t, usr_t_sum = 0;  
         struct rusage run_start, run_end;
@@ -79,6 +78,23 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
 #endif
         std::priority_queue<std::pair<float, labeltype >> gt(answers[i]);
 
+        // Get unique results by copying to a new queue, tracking seen items
+        std::priority_queue<std::pair<float, labeltype>> unique_result;
+        std::unordered_set<labeltype> seen;
+        
+        while (!result.empty()) {
+            auto top = result.top();
+            result.pop();
+            
+            if (seen.find(top.second) == seen.end()) {
+                unique_result.push(top);
+                seen.insert(top.second);
+            }
+        }
+        
+        // Replace original result queue with deduplicated one
+        result = unique_result;
+
         // Convert ground truth queue to unordered_set for analysis
         std::unordered_set<tableint> gt_set;
         std::priority_queue<std::pair<float, labeltype>> gt_copy = gt;
@@ -87,20 +103,14 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
             gt_copy.pop();
         }
         
-        // void analyzeSearchTree(tableint ep_id, const std::unordered_set<tableint>& groundtruth, 
-        // const std::string& dot_output_path = "") {}
-        appr_alg.analyzeSearchTree(appr_alg.entry_id_, gt_set, "./search_tree.dot");
-        
-        std::cout << "entry_id_ = " << appr_alg.entry_id_ << std::endl;
-
-        for(auto &[key, value] : appr_alg.search_tree_) {
-            std::cout << "key = " << key << ", value = " << value.size() << std::endl;
-        }
+        std::string tree_name = "./search_tree_" + std::to_string(i) + ".dot";
+        appr_alg.analyzeSearchTree(appr_alg.entry_id_, gt_set, tree_name);
 
         total += gt.size();
         int tmp = recall(result, gt);
-        correct += tmp;           
+        correct += tmp;      
     }
+
     long double time_us_per_query = total_time / qsize + rotation_time;
     long double recall = 1.0f * correct / total;
     cout << "---------------ADSampling HNSW------------------------" << endl;
@@ -112,13 +122,17 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     cout << "Step 2 propotion = " << adsampling::time2 / total_time * 100 << "%" << endl;
     cout << "Step 3 propotion = " << adsampling::time3 / total_time * 100 << "%" << endl;
     cout << "Pre-processing propotion = " << adsampling::time4 / total_time * 100 << "%" << endl;
+    cout << "Tree Recall@100 = " << adsampling::first_recall / qsize << endl;
+    cout << "Effective ratio = " << adsampling::effective_ratio / qsize << endl;
+    cout << "Second recall = " << adsampling::second_recall / qsize << endl;
+    cout << "Pruning fail ratio = " << adsampling::cnt_prune_fail * 100.0 / adsampling::tot_full_dist << "%" << endl;
+    cout << "#Calculate lower bound = " << adsampling::cnt_calculate_lower_bound / qsize << endl;
     // cout << "Time1 = " << adsampling::time1 << " us" << endl;
     // cout << "Time2 = " << adsampling::time2 << " us" << endl;
     // cout << "Distance time = " << adsampling::distance_time << " us" << endl;
     // cout << "Pruning time = " << adsampling::time3 << " us" << endl;
     // cout << "Total time = " << total_time << " us" << endl;
     // cout << "Total distance computation = " << adsampling::tot_dist_calculation << endl;
-    
     // cout << "Total prune = " << adsampling::tot_prune << endl;
     // cout << "Total tt = " << adsampling::tt / qsize << endl;
     // cout << appr_alg.ef_ << " " << recall * 100.0 << " " << time_us_per_query << " " << adsampling::tot_dimension + adsampling::tot_full_dist * vecdim << endl;
