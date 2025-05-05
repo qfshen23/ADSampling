@@ -1,6 +1,6 @@
 cd ..
 
-g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/ -I /usr/include/eigen3 
+g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/ -I /usr/include/eigen3 -g
 
 ef=500
 M=32
@@ -46,7 +46,7 @@ do
         centroid_file="${data_path}/${data}_centroid_${K}.fvecs"
 
         # sudo perf stat -e branch-misses,branch-instructions  
-
+        # sudo perf record -F 8000 
         ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -f ${flags_file} -c ${centroid_file}
     done
 done

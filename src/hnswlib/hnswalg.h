@@ -283,6 +283,14 @@ namespace hnswlib {
         mutable std::atomic<long> metric_distance_computations;
         mutable std::atomic<long> metric_hops;
 
+        __attribute__((noinline))
+        bool check_prune(uint64_t* cluster_flags, tableint candidate_id, uint64_t nearest_centroids_flags) const {
+            // Check if candidate_id's flags have no overlap with nearest centroids flags
+            // Returns true if we can prune this candidate
+            adsampling::pruned_by_flags++;
+            return (cluster_flags[candidate_id] & nearest_centroids_flags) == 0;
+        }
+
         template <bool has_deletions, bool collect_metrics=false>
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
         searchBaseLayerST(tableint ep_id, const void *data_point, size_t ef) const {
@@ -374,10 +382,6 @@ namespace hnswlib {
                 tableint current_node_id = current_node_pair.second;
                 int *data = (int *) get_linklist0(current_node_id);
                 size_t size = getListCount((linklistsizeint*)data);
-                if(collect_metrics){
-                    metric_hops++;
-                    metric_distance_computations+=size;
-                }
 
                 // Enumerate all the neighbors of the object and view them as candidates of KNNs. 
                 for (size_t j = 1; j <= size; j++) {
@@ -388,15 +392,18 @@ namespace hnswlib {
 
                         // counts[candidate_id] = counts[current_node_id] + 1;
 
+                        
                         // StopW stopww = StopW();
-                        // // check the candidate_id whether contain the nearest centroid flag
-                        // if ((cluster_flags_[candidate_id] & nearest_centroids_flags) == 0) {
-                        //     adsampling::pruned_by_flags++;
-                        //     adsampling::time1 += stopww.getElapsedTimeMicro();
-                        //     continue;
-                        // }
+                        // bool can_prune = check_prune(cluster_flags_, candidate_id, nearest_centroids_flags);
+                        // check the candidate_id whether contain the nearest centroid flag
+                        // can_prune = (cluster_flags_[candidate_id] & nearest_centroids_flags) == 0;
                         // adsampling::time1 += stopww.getElapsedTimeMicro();
 
+                        // if(can_prune){
+                        //     //adsampling::pruned_by_flags++;
+                        //     continue;
+                        // }
+                        
                         // adsampling::avg_flat += __builtin_popcount(cluster_flags_[candidate_id]);
 
                         // Conduct DCO with FDScanning wrt the N_ef th NN: 

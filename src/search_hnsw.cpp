@@ -1,9 +1,7 @@
-
-
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
 // #define COUNT_DIMENSION
-#define COUNT_DIST_TIME
+// #define COUNT_DIST_TIME
 
 #include <iostream>
 #include <fstream>
