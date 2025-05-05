@@ -4,8 +4,8 @@ import struct
 import os
 
 source = '/data/vector_datasets/'
-datasets = ['msong', 'nuswide']
-K = 64
+datasets = ['sift']
+K = 512
 
 def read_fvecs(filename, c_contiguous=True):
     fv = np.fromfile(filename, dtype=np.float32)
@@ -56,7 +56,7 @@ if __name__ == '__main__':
         batch_size = 10000  # avoid memory overflow, process in batches
         for i in range(0, X.shape[0], batch_size):
             end = min(i + batch_size, X.shape[0])
-            distances[i:end] = faiss.pairwise_distances(X[i:end], centroids)
+            distances[i:end] = np.sqrt(faiss.pairwise_distances(X[i:end], centroids))
 
         # Save distances
         to_fvecs(distances_path, distances)
