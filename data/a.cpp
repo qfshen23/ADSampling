@@ -95,14 +95,14 @@ MatrixXfRow compute_l2(const MatrixXfRow& queries, const MatrixXfRow& base, int 
 int main() {
     string root = "/data/vector_datasets/";
     string dataset = "sift";
-    int K = 64;
+    int K = 1024;
     string path = root + dataset + "/";
 
     auto base = read_fvecs(path + dataset + "_base.fvecs");
     auto query = read_fvecs(path + dataset + "_query.fvecs");
     auto centroids = read_fvecs(path + dataset + "_centroid_" + to_string(K) + ".fvecs");
     auto base2centroids = read_fvecs(path + dataset + "_distances_" + to_string(K) + ".fvecs");
-    base2centroids = base2centroids.cwiseSqrt();
+    // base2centroids = base2centroids.cwiseSqrt();
 
     auto q2c = compute_query_to_centroids(query, centroids);
     cout << "Phase 1" << endl;
@@ -127,7 +127,8 @@ int main() {
     }
 
     // Write average ratios to file
-    FILE* out = fopen("avg_ratios.txt", "w");
+    string output_file = path + dataset + "_avg_ratios_" + to_string(K) + ".txt";
+    FILE* out = fopen(output_file.c_str(), "w");
     for (int j = 0; j < cols; ++j) {
         fprintf(out, "%f\n", avg_ratios[j]);
     }

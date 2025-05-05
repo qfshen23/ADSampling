@@ -2,8 +2,8 @@
 
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
-#define COUNT_DIMENSION
-#define COUNT_DIST_TIME
+// #define COUNT_DIMENSION
+// #define COUNT_DIST_TIME
 
 #include <iostream>
 #include <fstream>
@@ -128,6 +128,8 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     cout << "Pruning fail ratio = " << adsampling::cnt_prune_fail * 100.0 / adsampling::tot_full_dist << "%" << endl;
     cout << "#Calculate lower bound = " << adsampling::cnt_calculate_lower_bound / qsize << endl;
     cout << "Estimated ratio = " << adsampling::estimated_ratio / adsampling::estimated_times << endl;
+    cout << "Pruned number = " << adsampling::cnt_pruned << endl;
+    cout << "Exact DCO = " << adsampling::exact_dcos << endl;
     // cout << "Time1 = " << adsampling::time1 << " us" << endl;
     // cout << "Time2 = " << adsampling::time2 << " us" << endl;
     // cout << "Distance time = " << adsampling::distance_time << " us" << endl;

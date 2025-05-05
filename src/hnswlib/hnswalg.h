@@ -298,6 +298,7 @@ namespace hnswlib {
         mutable std::atomic<long> metric_distance_computations;
         mutable std::atomic<long> metric_hops;
 
+        
         template <bool has_deletions, bool collect_metrics=false>
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
         searchBaseLayerST(tableint ep_id, const void *data_point, size_t ef) const {
@@ -312,7 +313,7 @@ namespace hnswlib {
             if (num_centroids_ > 0) {
                 query_to_centroids.resize(num_centroids_);
                 for (size_t i = 0; i < num_centroids_; i++) {
-                    query_to_centroids[i] = fstdistfunc_(data_point, centroids_[i].data(), dist_func_param_);
+                    query_to_centroids[i] = sqrt(fstdistfunc_(data_point, centroids_[i].data(), dist_func_param_));
                 }
             }
 
@@ -358,6 +359,7 @@ namespace hnswlib {
                         dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);       
                         cnt_dcos ++;
                         adsampling::tot_full_dist ++;
+                        adsampling::exact_dcos ++;
 
                         if (candidate_set.size() < ef3 || lowerBound > dist) {                      
                             candidate_set.emplace(-dist, candidate_id);
@@ -408,9 +410,11 @@ namespace hnswlib {
                             max_diff = std::max(max_diff, diff);
                         }
                         cnt_calculate_lower_bound ++;
-                        if (max_diff > lowerBound) {
+                        if (max_diff * max_diff > lowerBound) {
+                            adsampling::cnt_pruned ++;
                             continue;
                         }
+                        // std::cout << max_diff << " " << lowerBound << std::endl;
                         cnt_prune_fail ++;
 
                         // Conduct DCO with FDScanning wrt the N_ef th NN: 
@@ -425,9 +429,9 @@ namespace hnswlib {
                         adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif                  
                         adsampling::tot_full_dist ++;
-                        adsampling::estimated_ratio += max_diff / dist;
+                        adsampling::estimated_ratio += max_diff / sqrt(dist);
                         adsampling::estimated_times ++;
-
+                        adsampling::exact_dcos ++;
                         if (top_candidates.size() < ef || lowerBound > dist) {                      
                             candidate_set.emplace(-dist, candidate_id);
                             if (!has_deletions || !isMarkedDeleted(candidate_id))
@@ -449,6 +453,7 @@ namespace hnswlib {
             visited_list_pool_->releaseVisitedList(vl);
             return top_candidates;
         }
+        
 
         /*
         template <bool has_deletions, bool collect_metrics=false>
@@ -471,7 +476,7 @@ namespace hnswlib {
             if (num_centroids_ > 0) {
                 query_to_centroids.resize(num_centroids_);
                 for (size_t i = 0; i < num_centroids_; i++) {
-                    query_to_centroids[i] = fstdistfunc_(data_point, centroids_[i].data(), dist_func_param_);
+                    query_to_centroids[i] = sqrt(fstdistfunc_(data_point, centroids_[i].data(), dist_func_param_));
                 }
             }
 
@@ -629,7 +634,7 @@ namespace hnswlib {
             return top_candidates;
         }
         */
-        
+
         /*
         template <bool has_deletions, bool collect_metrics=false>
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
