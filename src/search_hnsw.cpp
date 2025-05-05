@@ -127,6 +127,7 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     cout << "Second recall = " << adsampling::second_recall / qsize << endl;
     cout << "Pruning fail ratio = " << adsampling::cnt_prune_fail * 100.0 / adsampling::tot_full_dist << "%" << endl;
     cout << "#Calculate lower bound = " << adsampling::cnt_calculate_lower_bound / qsize << endl;
+    cout << "Estimated ratio = " << adsampling::estimated_ratio / adsampling::estimated_times << endl;
     // cout << "Time1 = " << adsampling::time1 << " us" << endl;
     // cout << "Time2 = " << adsampling::time2 << " us" << endl;
     // cout << "Distance time = " << adsampling::distance_time << " us" << endl;

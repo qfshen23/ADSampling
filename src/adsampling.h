@@ -35,6 +35,8 @@ float second_recall = 0.0;
 float effective_ratio = 0.0;
 unsigned long long cnt_prune_fail = 0;
 unsigned long long cnt_calculate_lower_bound = 0;
+float estimated_ratio = 0.0;
+unsigned long long estimated_times = 0;
 std::vector<float> diskK_vec;
 
 void clear() {
@@ -53,6 +55,8 @@ void clear() {
     effective_ratio = 0.0;  
     cnt_prune_fail = 0; 
     cnt_calculate_lower_bound = 0;
+    estimated_ratio = 0.0;
+    estimated_times = 0;
 }
 
 // The hypothesis testing checks whether \sqrt{D/d} dis' > (1 +  epsilon0 / \sqrt{d}) * r.
