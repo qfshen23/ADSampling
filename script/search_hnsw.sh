@@ -40,7 +40,7 @@ do
         query="${data_path}/${data}_query.fvecs"
         gnd="${data_path}/${data}_groundtruth.ivecs"
 
-        depth=1
+        depth=2
 
         flags_file="${index_path}/${data}_ef${ef}_M${M}_arcflags_dep${depth}.index"
         centroid_file="${data_path}/${data}_centroid_${K}.fvecs"
