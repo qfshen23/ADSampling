@@ -401,19 +401,18 @@ namespace hnswlib {
 
                         // Try to prune using triangle inequality with centroids
                         dist_t* distances = (dist_t*)(centroid_distances_memory_ + candidate_id * size_per_element_centroids_);
-                        bool can_prune = false;
+                        dist_t max_diff = 0;
                         // For each centroid, check if triangle inequality allows pruning
                         for (size_t c = 0; c < num_centroids_; c++) {
                             dist_t diff = std::abs(query_to_centroids[c] - distances[c]);
-                            can_prune |= (diff > lowerBound); // 无分支替代
+                            max_diff = std::max(max_diff, diff);
                         }
                         cnt_calculate_lower_bound ++;
-                        if (can_prune) {
+                        if (max_diff > lowerBound) {
                             continue;
                         }
-
                         cnt_prune_fail ++;
-                        
+
                         // Conduct DCO with FDScanning wrt the N_ef th NN: 
                         // (1) calculate its exact distance 
                         // (2) compare it with the N_ef th distance (i.e., lowerBound)
@@ -426,6 +425,9 @@ namespace hnswlib {
                         adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif                  
                         adsampling::tot_full_dist ++;
+                        adsampling::estimated_ratio += max_diff / dist;
+                        adsampling::estimated_times ++;
+
                         if (top_candidates.size() < ef || lowerBound > dist) {                      
                             candidate_set.emplace(-dist, candidate_id);
                             if (!has_deletions || !isMarkedDeleted(candidate_id))
