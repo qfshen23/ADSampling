@@ -396,11 +396,11 @@ namespace hnswlib {
                         // StopW stopww = StopW();
                         // bool can_prune = check_prune(cluster_flags_, candidate_id, nearest_centroids_flags);
                         // check the candidate_id whether contain the nearest centroid flag
-                        // can_prune = (cluster_flags_[candidate_id] & nearest_centroids_flags) == 0;
+                        // bool can_prune = (cluster_flags_[candidate_id] & nearest_centroids_flags) == 0;
                         // adsampling::time1 += stopww.getElapsedTimeMicro();
 
                         // if(can_prune){
-                        //     //adsampling::pruned_by_flags++;
+                        //     adsampling::pruned_by_flags++;
                         //     continue;
                         // }
                         
