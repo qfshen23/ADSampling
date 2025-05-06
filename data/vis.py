@@ -4,9 +4,9 @@ import os
 
 source = '/data/vector_datasets/'
 datasets = ['sift']
-K=1024
+K=64
 
-def plot_ratio_histogram_from_txt(txt_file, output_path, bins=50):
+def plot_ratio_histogram_from_txt(txt_file, output_path, bins=80):
     # Load data
     try:
         ratios = np.loadtxt(txt_file)
