@@ -1,15 +1,15 @@
 cd ..
 
-g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/ -I /usr/include/eigen3 -g
+g++ ./src/search_hnsw.cpp -O3 -o ./src/search_hnsw -I ./src/ -I /usr/include/eigen3 -g -fopenmp
 
 ef=500
 M=32
 datasets=('sift')
-K=64
+adaptive=0
 
 for data in "${datasets[@]}"
 do  
-    for adaptive in {0..2}
+    for K in 64 256 512 1024
     do
 
         if [ $adaptive -ne 0 ];then
@@ -40,13 +40,14 @@ do
         query="${data_path}/${data}_query.fvecs"
         gnd="${data_path}/${data}_groundtruth.ivecs"
 
-        depth=2
+        depth=1
 
-        flags_file="${index_path}/${data}_ef${ef}_M${M}_arcflags_dep${depth}.index"
+        flags_file="${index_path}/${data}_ef${ef}_M${M}_arcflags${K}_dep${depth}.index"
         centroid_file="${data_path}/${data}_centroid_${K}.fvecs"
+        cluster_ids_file="${data_path}/${data}_cluster_id_${K}.ivecs" 
 
         # sudo perf stat -e branch-misses,branch-instructions  
         # sudo perf record -F 8000 
-        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -f ${flags_file} -c ${centroid_file}
+        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -f ${flags_file} -c ${centroid_file} -l ${cluster_ids_file}
     done
 done

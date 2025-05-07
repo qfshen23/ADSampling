@@ -28,6 +28,8 @@ We have included detailed comments in these functions.
 #include <unordered_set>
 #include <list>
 #include <queue>
+#include <vector>
+#include <algorithm>
 
 using namespace std;
 
@@ -112,12 +114,10 @@ namespace hnswlib {
             free(linkLists_);
             delete visited_list_pool_;
             
-            // Free cluster flags and centroids
-            if (cluster_flags_ != nullptr) {
-                free(cluster_flags_);
-                cluster_flags_ = nullptr;
-            }
+            // Clear cluster flags (no need to free explicitly since using vectors)
+            cluster_flags_.clear();
             
+            // Free centroids
             if (centroids_ != nullptr) {
                 for (size_t i = 0; i < num_centroids_; i++) {
                     if (centroids_[i] != nullptr) {
@@ -284,11 +284,28 @@ namespace hnswlib {
         mutable std::atomic<long> metric_hops;
 
         __attribute__((noinline))
-        bool check_prune(uint64_t* cluster_flags, tableint candidate_id, uint64_t nearest_centroids_flags) const {
-            // Check if candidate_id's flags have no overlap with nearest centroids flags
+        bool check_prune(std::vector<std::vector<uint32_t>>& cluster_flags, tableint candidate_id, const std::vector<uint32_t>& nearest_centroids) const {
+            // Check if candidate_id's flags have any overlap with nearest centroids
             // Returns true if we can prune this candidate
-            adsampling::pruned_by_flags++;
-            return (cluster_flags[candidate_id] & nearest_centroids_flags) == 0;
+            
+            // Check if the candidate's clusters contain any of the query's nearest centroids
+            const std::vector<uint32_t>& candidate_clusters = cluster_flags[candidate_id];
+            
+            // If the candidate has no clusters, it cannot be pruned
+            if (candidate_clusters.empty()) {
+                return false;
+            }
+            
+            // Check for any intersection between candidate clusters and nearest centroids
+            for (const auto& centroid_id : nearest_centroids) {
+                if (std::find(candidate_clusters.begin(), candidate_clusters.end(), centroid_id) != candidate_clusters.end()) {
+                    // Found a match, cannot be pruned
+                    return false;
+                }
+            }
+            
+            // No overlap, can be pruned
+            return true;
         }
 
         template <bool has_deletions, bool collect_metrics=false>
@@ -298,43 +315,38 @@ namespace hnswlib {
             vl_type *visited_array = vl->mass;
             vl_type visited_array_tag = vl->curV;
 
-            // select the nearest two centroids
-            // size_t nearest_centroid1 = 0, nearest_centroid2 = 0;
-            // dist_t min_dist1 = std::numeric_limits<dist_t>::max();
-            // dist_t min_dist2 = std::numeric_limits<dist_t>::max();
-            // // Find the two nearest centroids to the query point
-            // if (has_centroids_) {
-            //     for (size_t i = 0; i < num_centroids_; i++) {
-            //         dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
-            //         adsampling::tot_full_dist ++;
-            //         if (dist < min_dist1) {
-            //             min_dist2 = min_dist1;
-            //             nearest_centroid2 = nearest_centroid1;
-            //             min_dist1 = dist;
-            //             nearest_centroid1 = i;
-            //         } else if (dist < min_dist2) {
-            //             min_dist2 = dist;
-            //             nearest_centroid2 = i;
-            //         }
-            //     }
-            // }
-            // uint64_t nearest_centroids_flags = (1ULL << nearest_centroid1) | (1ULL << nearest_centroid2);
+            entry_id_ = ep_id;
+            pruned_vertices_.clear();
 
-            // size_t nearest_centroid = 0;
-            // dist_t min_dist = std::numeric_limits<dist_t>::max();
-            // // Find the  nearest centroid to the query point
-            // // if (has_centroids_) {
-            //     for (size_t i = 0; i < num_centroids_; i++) {
-            //         dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
-            //         adsampling::tot_full_dist ++;
-            //         if (dist < min_dist) {
-            //             min_dist = dist;
-            //             nearest_centroid = i;
-            //         }
-            //     }
-            // // }
-            // uint64_t nearest_centroids_flags = 1ULL << nearest_centroid;
-
+            // Find the nearest centroids to the query point
+            std::vector<uint32_t> nearest_centroids;
+            if (has_centroids_ && !cluster_flags_.empty()) {
+                const size_t K_NEAREST = 1; // Number of nearest centroids to consider
+                
+                // Calculate all distances first
+                std::vector<std::pair<dist_t, uint32_t>> centroid_distances;
+                centroid_distances.reserve(num_centroids_);
+                
+                // Calculate distance to each centroid
+                for (size_t i = 0; i < num_centroids_; i++) {
+                    dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
+                    adsampling::tot_full_dist++;
+                    centroid_distances.emplace_back(dist, i);
+                }
+                
+                // Sort all distances
+                std::partial_sort(centroid_distances.begin(), 
+                                 centroid_distances.begin() + std::min(K_NEAREST, centroid_distances.size()),
+                                 centroid_distances.end());
+                
+                // Take the K nearest centroids
+                nearest_centroids.reserve(std::min(K_NEAREST, centroid_distances.size()));
+                for (size_t i = 0; i < std::min(K_NEAREST, centroid_distances.size()); i++) {
+                    nearest_centroids.push_back(centroid_distances[i].second);
+                }
+                
+                query_nearest_centroids_ = nearest_centroids;
+            }
 
             // top_candidates - the result set R
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
@@ -352,7 +364,7 @@ namespace hnswlib {
                 adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif          
                 adsampling::tot_dist_calculation++;
-                adsampling::tot_full_dist ++;
+                adsampling::tot_full_dist++;
                 lowerBound = dist;
                 top_candidates.emplace(dist, ep_id);
                 candidate_set.emplace(-dist, ep_id);
@@ -364,9 +376,6 @@ namespace hnswlib {
 
             visited_array[ep_id] = visited_array_tag;
             int cnt_visit = 0;
-
-            // unordered_map<int, int> counts;
-            // counts[ep_id] = 0;
 
             // Iteratively generate candidates and conduct DCOs to maintain the result set R.
             while (!candidate_set.empty()) {
@@ -387,24 +396,19 @@ namespace hnswlib {
                 for (size_t j = 1; j <= size; j++) {
                     int candidate_id = *(data + j);
                     if (!(visited_array[candidate_id] == visited_array_tag)) {
-                        cnt_visit ++;
+                        cnt_visit++;
                         visited_array[candidate_id] = visited_array_tag;
 
-                        // counts[candidate_id] = counts[current_node_id] + 1;
-
-                        
-                        // StopW stopww = StopW();
-                        // bool can_prune = check_prune(cluster_flags_, candidate_id, nearest_centroids_flags);
-                        // check the candidate_id whether contain the nearest centroid flag
-                        // bool can_prune = (cluster_flags_[candidate_id] & nearest_centroids_flags) == 0;
-                        // adsampling::time1 += stopww.getElapsedTimeMicro();
-
-                        // if(can_prune){
-                        //     adsampling::pruned_by_flags++;
-                        //     continue;
-                        // }
-                        
-                        // adsampling::avg_flat += __builtin_popcount(cluster_flags_[candidate_id]);
+                        // Apply pruning if we have nearest centroids and cluster flags
+                        bool prune_candidate = false;
+                        if (!nearest_centroids.empty() && !cluster_flags_.empty()) {
+                            prune_candidate = check_prune(cluster_flags_, candidate_id, nearest_centroids);
+                            if (prune_candidate) {
+                                adsampling::pruned_by_flags++;
+                                pruned_vertices_.push_back(candidate_id);
+                                continue;
+                            }
+                        }
 
                         // Conduct DCO with FDScanning wrt the N_ef th NN: 
                         // (1) calculate its exact distance 
@@ -417,7 +421,8 @@ namespace hnswlib {
 #ifdef COUNT_DIST_TIME
                         adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif                  
-                        adsampling::tot_full_dist ++;
+                        adsampling::tot_full_dist++;
+                        
                         if (top_candidates.size() < ef || lowerBound > dist) {                      
                             candidate_set.emplace(-dist, candidate_id);
                             if (!has_deletions || !isMarkedDeleted(candidate_id))
@@ -696,6 +701,7 @@ namespace hnswlib {
             visited_list_pool_->releaseVisitedList(vl);
             return answers;
         }
+        
         void getNeighborsByHeuristic2(
                 std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
         const size_t M) {
@@ -1618,13 +1624,13 @@ namespace hnswlib {
         }
 
         // Compute arc flags for each node based on cluster IDs
-        void computeClusterFlags(const std::vector<uint8_t>& cluster_ids, size_t depth) {
+        void computeClusterFlags(const std::vector<uint32_t>& cluster_ids, size_t depth) {
             if (cluster_ids.size() < cur_element_count) {
                 throw std::runtime_error("Number of cluster IDs is less than the number of elements in the index");
             }
 
             // Find the maximum cluster ID to determine the number of clusters
-            uint8_t max_cluster_id = 0;
+            uint32_t max_cluster_id = 0;
             for (size_t i = 0; i < cur_element_count; i++) {
                 if (cluster_ids[i] > max_cluster_id) {
                     max_cluster_id = cluster_ids[i];
@@ -1634,22 +1640,9 @@ namespace hnswlib {
             
             std::cout << "Found " << num_clusters << " clusters" << std::endl;
             
-            // Ensure we can fit all clusters in a single uint64_t
-            if (num_clusters > 64) {
-                throw std::runtime_error("Too many clusters (>" + std::to_string(64) + "). Current implementation supports up to 64 clusters.");
-            }
-            
-            // Clean up existing flags if any
-            if (cluster_flags_ != nullptr) {
-                free(cluster_flags_);
-            }
-            
-            // Allocate memory for cluster flags
-            cluster_flags_ = (uint64_t*)calloc(cur_element_count, sizeof(uint64_t));
-            if (cluster_flags_ == nullptr) {
-                throw std::runtime_error("Failed to allocate memory for cluster flags");
-            }
-            num_cluster_flags_ = cur_element_count;
+            // Initialize cluster_flags_ with empty vectors for each node
+            cluster_flags_.clear();
+            cluster_flags_.resize(cur_element_count);
             
             std::cout << "Computing cluster flags with OpenMP..." << std::endl;
             
@@ -1669,12 +1662,16 @@ namespace hnswlib {
                 }
                 
                 // Mark the node's own cluster as reachable
-                uint8_t node_cluster = cluster_ids[i];
-                cluster_flags_[i] |= (1ULL << node_cluster);
+                uint32_t node_cluster = cluster_ids[i];
+                cluster_flags_[i].push_back(node_cluster);
                 
                 // BFS to find reachable clusters within the specified depth
                 std::queue<std::pair<tableint, size_t>> q; // (node, current_depth)
                 std::unordered_set<tableint> visited;
+                std::unordered_set<uint32_t> reachable_clusters;
+                
+                // Add node's own cluster
+                reachable_clusters.insert(node_cluster);
                 
                 q.push({i, 0});
                 visited.insert(i);
@@ -1703,8 +1700,12 @@ namespace hnswlib {
                         }
                         
                         // Mark the neighbor's cluster as reachable from the starting node
-                        uint8_t neighbor_cluster = cluster_ids[neighbor];
-                        cluster_flags_[i] |= (1ULL << neighbor_cluster);
+                        uint32_t neighbor_cluster = cluster_ids[neighbor];
+                        
+                        // Add to reachable clusters if not already added
+                        if (reachable_clusters.find(neighbor_cluster) == reachable_clusters.end()) {
+                            reachable_clusters.insert(neighbor_cluster);
+                        }
                         
                         // If we haven't visited this neighbor yet, add it to the queue
                         if (visited.find(neighbor) == visited.end()) {
@@ -1713,6 +1714,17 @@ namespace hnswlib {
                         }
                     }
                 }
+                
+                // Convert set to vector and store in cluster_flags_
+                cluster_flags_[i].reserve(reachable_clusters.size());
+                for (const auto& cluster : reachable_clusters) {
+                    if (std::find(cluster_flags_[i].begin(), cluster_flags_[i].end(), cluster) == cluster_flags_[i].end()) {
+                        cluster_flags_[i].push_back(cluster);
+                    }
+                }
+                
+                // Sort for faster lookups
+                std::sort(cluster_flags_[i].begin(), cluster_flags_[i].end());
             }
             
             std::cout << "Finished computing cluster flags" << std::endl;
@@ -1720,7 +1732,7 @@ namespace hnswlib {
         
         // Save the computed cluster flags to a file
         void saveFlags(const std::string &filename) {
-            if (cluster_flags_ == nullptr || num_cluster_flags_ == 0) {
+            if (cluster_flags_.empty()) {
                 throw std::runtime_error("Cluster flags have not been computed yet");
             }
             
@@ -1730,12 +1742,20 @@ namespace hnswlib {
             }
             
             // Write header information
-            size_t num_nodes = num_cluster_flags_;
-            
+            size_t num_nodes = cluster_flags_.size();
             output.write(reinterpret_cast<char*>(&num_nodes), sizeof(size_t));
             
             // Write cluster flags for each node
-            output.write(reinterpret_cast<char*>(cluster_flags_), num_nodes * sizeof(uint64_t));
+            for (size_t i = 0; i < num_nodes; i++) {
+                // Write the number of clusters for this node
+                size_t num_clusters = cluster_flags_[i].size();
+                output.write(reinterpret_cast<char*>(&num_clusters), sizeof(size_t));
+                
+                // Write the actual cluster IDs
+                if (num_clusters > 0) {
+                    output.write(reinterpret_cast<const char*>(cluster_flags_[i].data()), num_clusters * sizeof(uint32_t));
+                }
+            }
             
             output.close();
             std::cout << "Saved cluster flags to " << filename << std::endl;
@@ -1760,20 +1780,22 @@ namespace hnswlib {
                 num_nodes = std::min(num_nodes, cur_element_count);
             }
             
-            // Clean up existing flags if any
-            if (cluster_flags_ != nullptr) {
-                free(cluster_flags_);
-            }
+            // Clear and resize the cluster_flags_ vector
+            cluster_flags_.clear();
+            cluster_flags_.resize(cur_element_count);
             
-            // Allocate memory for cluster flags
-            cluster_flags_ = (uint64_t*)calloc(cur_element_count, sizeof(uint64_t));
-            if (cluster_flags_ == nullptr) {
-                throw std::runtime_error("Failed to allocate memory for cluster flags");
+            // Read cluster flags for each node
+            for (size_t i = 0; i < num_nodes; i++) {
+                // Read the number of clusters for this node
+                size_t num_clusters;
+                input.read(reinterpret_cast<char*>(&num_clusters), sizeof(size_t));
+                
+                // Read the actual cluster IDs
+                if (num_clusters > 0) {
+                    cluster_flags_[i].resize(num_clusters);
+                    input.read(reinterpret_cast<char*>(cluster_flags_[i].data()), num_clusters * sizeof(uint32_t));
+                }
             }
-            num_cluster_flags_ = cur_element_count;
-            
-            // Read cluster flags
-            input.read(reinterpret_cast<char*>(cluster_flags_), num_nodes * sizeof(uint64_t));
             
             // Check if we've read the entire file
             if (!input.eof() && input.fail()) {
@@ -1877,18 +1899,84 @@ namespace hnswlib {
             return has_centroids_;
         }
 
+        auto analyzePrunedCandidates(HierarchicalNSW<float> &appr_alg,
+                             int k_hop,
+                             const std::vector<tableint>& result,
+                             const std::vector<tableint>& gt) {
+            std::unordered_set<tableint> found(result.begin(), result.end());
+            // 1. Collect missed labels
+            std::unordered_set<tableint> missed;
+            for (tableint id : gt) {
+                if (found.find(id) == found.end()) {
+                    missed.insert(id);
+                }
+            }
+
+            std::unordered_map<tableint, int> label_to_min_hop;
+            std::unordered_set<tableint> visited;
+            std::queue<std::pair<tableint, int>> q;
+
+            // 2. Initialize multi-source BFS from all pruned vertices
+            for (tableint start : appr_alg.pruned_vertices_) {
+                q.push({start, 0});
+                visited.insert(start);
+            }
+
+            while (!q.empty()) {
+                auto [cur, hop] = q.front();
+                q.pop();
+
+                if (hop > k_hop) continue;
+
+                if (missed.find(cur) != missed.end()) {
+                    if (!label_to_min_hop.count(cur) || hop < label_to_min_hop[cur]) {
+                        label_to_min_hop[cur] = hop;
+                    }
+                }
+
+                if (hop < k_hop) {
+                    int* data = (int*)appr_alg.get_linklist0(cur);
+                    size_t size = appr_alg.getListCount((linklistsizeint*)data);
+                    tableint* neighbors = (tableint*)(data + 1);
+                    for (size_t j = 0; j < size; ++j) {
+                        tableint nb = neighbors[j];
+                        if (visited.insert(nb).second) {
+                            q.push({nb, hop + 1});
+                        }
+                    }
+                }
+            }
+
+            // 3. 统计 hop 分布
+            std::unordered_map<int, int> hop_hit_count;
+            int unreachable = 0;
+
+            for (tableint miss_id : missed) {
+                if (label_to_min_hop.count(miss_id)) {
+                    hop_hit_count[label_to_min_hop[miss_id]]++;
+                } else {
+                    unreachable++;
+                }
+            }
+
+            for (int h = 0; h <= 5; h++) {
+                adsampling::hit_by_pruned[h] += hop_hit_count[h];
+            }
+        }
+
+        mutable tableint entry_id_ = 0;
+        mutable std::vector<uint32_t> query_nearest_centroids_;
+
+        mutable std::vector<tableint> pruned_vertices_;
     private:
-        // Storage for cluster flags - for each node, stores which clusters are reachable in a single uint64_t
-        // Each bit in the uint64_t value represents a cluster
-        uint64_t* cluster_flags_ = nullptr;
-        size_t num_cluster_flags_ = 0;
+        // Storage for cluster flags - for each node, stores which clusters are reachable
+        // Now using a vector of vectors instead of a bitmap
+        mutable std::vector<std::vector<uint32_t>> cluster_flags_;
         
         // Storage for centroids data
         float** centroids_ = nullptr;
         size_t num_centroids_ = 0;
         size_t centroid_dim_ = 0;
         bool has_centroids_ = false;
-    
     };
-
 }

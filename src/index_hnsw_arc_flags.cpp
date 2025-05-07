@@ -11,20 +11,20 @@
 using namespace std;
 using namespace hnswlib;
 
-std::vector<uint8_t> read_ivecs(const std::string &filename) {
+std::vector<uint32_t> read_ivecs(const std::string &filename) {
     std::ifstream file(filename, std::ios::binary);
     if (!file.is_open()) {
         throw std::runtime_error("Failed to open file: " + filename);
     }
 
-    std::vector<uint8_t> cluster_ids;
+    std::vector<uint32_t> cluster_ids;
     int d;
     while (file.read(reinterpret_cast<char*>(&d), sizeof(int))) {
         if (d != 1) {
             throw std::runtime_error("Expected dimension 1 for cluster IDs");
         }
 
-        uint8_t cluster_id;
+        uint32_t cluster_id;
         if (!file.read(reinterpret_cast<char*>(&cluster_id), sizeof(int))) {
             break;
         }
@@ -110,7 +110,7 @@ int main(int argc, char * argv[]) {
     size_t N = X->n;
     size_t report = 50000;
 
-    std::vector<uint8_t> cluster_ids = read_ivecs(cluster_ids_path);
+    std::vector<uint32_t> cluster_ids = read_ivecs(cluster_ids_path);
     
     L2Space l2space(D);
     HierarchicalNSW<float> *appr_alg = new HierarchicalNSW<float>(&l2space, index_path, false);
