@@ -35,10 +35,10 @@ do
             centroid_file="${data_path}/O${data}_centroid_${C}.fvecs"
         fi
 
-        depth=1
+        depth=2
         cluster_ids_file="${data_path}/${data}_cluster_id_${K}.ivecs" 
         index_file="${index_path}/O${data}_ef${efConstruction}_M${M}.index"
-        flags_file="${index_path}/${data}_ef${efConstruction}_M${M}_arcflags_dep${depth}.index"
+        flags_file="${index_path}/${data}_ef${efConstruction}_M${M}_arcflags${K}_dep${depth}.index"
         echo $index_file
         echo $flags_file
 

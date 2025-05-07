@@ -14,7 +14,7 @@ Note that in the whole algorithm we do not calculate the square root of the dist
 
 using namespace std;
 
-namespace adsampling{
+namespace adsampling {
 
 unsigned int D = 960; // The dimensionality of the dataset. 
 float epsilon0 = 2.1;  // epsilon0 - by default 2.1, recommended in [1.0,4.0], valid in in [0, +\infty) 
@@ -32,6 +32,11 @@ unsigned long long pruned_by_flags = 0;
 std::vector<float> diskK_vec;
 float avg_hop = 0.0;
 float avg_flat = 0.0;
+float avg_gt_in_same_cluster = 0.0;
+float avg_query_in_same_cluster = 0.0;
+int avg_gt_in_same_cluster_vec[100];
+int avg_query_in_same_cluster_vec[100];
+int hit_by_pruned[20];
 
 void clear() {
     distance_time = 0;
@@ -43,7 +48,18 @@ void clear() {
     cntt = dist_cnt = pruned_by_flags = 0;
     avg_hop = 0.0;
     avg_flat = 0.0;
+    avg_gt_in_same_cluster = 0.0;
+    avg_query_in_same_cluster = 0.0;
     diskK_vec.clear();
+
+    for (int i = 0; i < 100; i++) {
+        avg_gt_in_same_cluster_vec[i] = 0;
+        avg_query_in_same_cluster_vec[i] = 0;
+    }
+
+    for (int i = 0; i < 20; i++) {
+        hit_by_pruned[i] = 0;
+    }
 }
 
 // The hypothesis testing checks whether \sqrt{D/d} dis' > (1 +  epsilon0 / \sqrt{d}) * r.
