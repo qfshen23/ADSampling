@@ -318,6 +318,8 @@ namespace hnswlib {
             entry_id_ = ep_id;
             pruned_vertices_.clear();
 
+            entry_ids_.push_back(ep_id);
+
             // Find the nearest centroids to the query point
             std::vector<uint32_t> nearest_centroids;
             if (has_centroids_ && !cluster_flags_.empty()) {
@@ -1899,6 +1901,15 @@ namespace hnswlib {
             return has_centroids_;
         }
 
+        void collectLayer1Vertices() {
+            layer1_vertices_.clear();
+            for (size_t i = 0; i < cur_element_count; i++) {
+                if (element_levels_[i] >= 1) {
+                    layer1_vertices_.push_back(i);
+                }
+            }   
+        }
+
         auto analyzePrunedCandidates(HierarchicalNSW<float> &appr_alg,
                              int k_hop,
                              const std::vector<tableint>& result,
@@ -1959,7 +1970,7 @@ namespace hnswlib {
                 }
             }
 
-            for (int h = 0; h <= 5; h++) {
+            for (int h = 0; h < 8; h++) {
                 adsampling::hit_by_pruned[h] += hop_hit_count[h];
             }
         }
@@ -1968,7 +1979,10 @@ namespace hnswlib {
         mutable std::vector<uint32_t> query_nearest_centroids_;
 
         mutable std::vector<tableint> pruned_vertices_;
-    private:
+        mutable std::vector<tableint> entry_ids_;
+
+        mutable std::vector<tableint> layer1_vertices_;
+
         // Storage for cluster flags - for each node, stores which clusters are reachable
         // Now using a vector of vectors instead of a bitmap
         mutable std::vector<std::vector<uint32_t>> cluster_flags_;

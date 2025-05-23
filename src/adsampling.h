@@ -38,6 +38,13 @@ int avg_gt_in_same_cluster_vec[100];
 int avg_query_in_same_cluster_vec[100];
 int hit_by_pruned[20];
 
+int gt_cluster_rank_count[100] = {0}; // rank 0 = same cluster as entry
+int gt_query_cluster_rank_count[100] = {0}; // rank 0 = same cluster as query
+
+int pruned_cluster_rank_count[200] = {0}; // rank 0 = same cluster as query
+
+int pruned_in_gt_flag_rank_count[100] = {0};  // rank bucket
+
 void clear() {
     distance_time = 0;
     tot_dimension = 0;
@@ -59,6 +66,19 @@ void clear() {
 
     for (int i = 0; i < 20; i++) {
         hit_by_pruned[i] = 0;
+    }
+
+    for (int i = 0; i < 100; i++) {
+        gt_cluster_rank_count[i] = 0;
+        gt_query_cluster_rank_count[i] = 0;
+    }
+
+    for (int i = 0; i < 200; i++) {
+        pruned_cluster_rank_count[i] = 0;
+    }
+
+    for (int i = 0; i < 100; i++) {
+        pruned_in_gt_flag_rank_count[i] = 0;
     }
 }
 
