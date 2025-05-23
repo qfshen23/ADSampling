@@ -1,67 +1,61 @@
-import argparse
 import numpy as np
 import faiss
 import struct
 import os
 
-source = '/data/vector_datasets'
+source = '/data/vector_datasets/'
+datasets = ['gist', 'sift', 'nuswide', 'msong']
+K = 10000
 
-def read_fvecs(fname):
-    """读取 *.fvecs -> numpy.float32 (n, d)"""
-    with open(fname, "rb") as f:
-        buf = f.read()
-    # 每个向量: 第 4 字节是维度 d，后面 d 个 float32
-    dim = struct.unpack('i', buf[:4])[0]
-    vec_size = 4 + 4 * dim
-    n = len(buf) // vec_size
-    data = np.frombuffer(buf, dtype=np.float32).reshape(n, dim + 1)
-    return data[:, 1:]  # 去掉头部 dim
+def read_fvecs(filename, c_contiguous=True):
+    fv = np.fromfile(filename, dtype=np.float32)
+    if fv.size == 0:
+        return np.zeros((0, 0))
+    dim = fv.view(np.int32)[0]
+    assert dim > 0
+    fv = fv.reshape(-1, 1 + dim)
+    if not all(fv.view(np.int32)[:, 0] == dim):
+        raise IOError("Non-uniform vector sizes in " + filename)
+    fv = fv[:, 1:]
+    if c_contiguous:
+        fv = fv.copy()
+    return fv
 
-def write_ivecs(fname, arr):
-    """保存 *.ivecs (int32)"""
-    n, k = arr.shape
-    with open(fname, "wb") as f:
-        for row in arr:
-            f.write(struct.pack('i', k))       # 写入 k
-            f.write(row.astype(np.int32).tobytes())
+def to_ivecs(filename, data):
+    print(f"Writing File - {filename}")
+    with open(filename, 'wb') as fp:
+        for y in data:
+            d = struct.pack('I', len(y))
+            fp.write(d)
+            for x in y:
+                a = struct.pack('i', x)
+                fp.write(a)
 
-def build_gt(base, queries, k=100):
-    """使用 Faiss 暴力 L2 搜索得到 top-k indices"""
-    d = base.shape[1]
-    index = faiss.IndexFlatL2(d)
-    index.add(base)                       # n_base x d
-    D, I = index.search(queries, k)       # n_query x k
-    return I
+if __name__ == '__main__':
+    for dataset in datasets:
+        print(f"Processing dataset - {dataset}")
+        # Paths
+        path = os.path.join(source, dataset)
+        base_path = os.path.join(path, f'{dataset}_base.fvecs')
+        query_path = os.path.join(path, f'{dataset}_query.fvecs')
+        gt_path = os.path.join(path, f'{dataset}_groundtruth_{K}.ivecs')
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data", required=True,
-                        help="数据前缀，如 'sift1m'（将读取 sift1m_base.fvecs 等）")
-    parser.add_argument("-k", "--topk", type=int, default=100,
-                        help="返回前 k 个近邻 (默认 100)")
-    args = parser.parse_args()
+        # Read data
+        print("Loading base vectors...")
+        base = read_fvecs(base_path)
+        print(f"  base: {base.shape}")
 
-    base_file   = os.path.join(source, args.data, f"{args.data}_base.fvecs")
-    query_file  = os.path.join(source, args.data, f"{args.data}_query.fvecs")
-    out_file    = os.path.join(source, args.data, f"{args.data}_groundtruth.ivecs")
+        print("Loading query vectors...")
+        query = read_fvecs(query_path)
+        print(f"  query: {query.shape}")
 
-    if not os.path.exists(base_file) or not os.path.exists(query_file):
-        raise FileNotFoundError("找不到 base/query fvecs 文件")
+        # Build groundtruth
+        print(f"Computing {K}-NN groundtruth (L2)...")
+        index = faiss.IndexFlatL2(base.shape[1])
+        index.add(base)
+        _, I = index.search(query, K)
 
-    print("Loading base vectors...")
-    xb = read_fvecs(base_file)
-    print(f"  base: {xb.shape}")
-
-    print("Loading query vectors...")
-    xq = read_fvecs(query_file)
-    print(f"  query: {xq.shape}")
-
-    print(f"Computing {args.topk}-NN groundtruth (L2)...")
-    idx = build_gt(xb, xq, k=args.topk)
-
-    print(f"Writing groundtruth to {out_file}")
-    write_ivecs(out_file, idx)
-    print("Done.")
-
-if __name__ == "__main__":
-    main()
+        # Save groundtruth
+        print(f"Writing groundtruth to {gt_path}")
+        to_ivecs(gt_path, I)
+        print("Done.")
