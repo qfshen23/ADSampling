@@ -28,6 +28,7 @@ We have included detailed comments in these functions.
 #include <unordered_set>
 #include <list>
 #include <unordered_map>
+#include <map>
 
 using namespace std;
 
@@ -784,7 +785,6 @@ namespace hnswlib {
             ef_ = ef;
         }
 
-
         std::priority_queue<std::pair<dist_t, tableint>> searchKnnInternal(void *query_data, int k) {
             std::priority_queue<std::pair<dist_t, tableint  >> top_candidates;
             if (cur_element_count == 0) return top_candidates;
@@ -1465,8 +1465,7 @@ namespace hnswlib {
                 if(adaptive == 1) top_candidates=searchBaseLayerADstar<true,true>(currObj, query_data, std::max(ef_, k), k);
                 else if(adaptive == 2) top_candidates=searchBaseLayerAD<true,true>(currObj, query_data, std::max(ef_, k));
                 else top_candidates=searchBaseLayerST<true,true>(currObj, query_data, std::max(ef_, k));
-            }
-            else{
+            } else {
                 if(adaptive == 1) top_candidates=searchBaseLayerADstar<true,true>(currObj, query_data, std::max(ef_, k), k);
                 else if(adaptive == 2) top_candidates=searchBaseLayerAD<true,true>(currObj, query_data, std::max(ef_, k));
                 else {
@@ -1534,6 +1533,29 @@ namespace hnswlib {
             for (int l = maxlevel_; l >= 0; --l) {
                 std::cout << "  Layer " << l << ": " << layer_counts[l] << " nodes" << std::endl;
             }
+        }
+
+        std::map<int, int> get_indegree_histogram() const {
+            std::vector<int> indegree(cur_element_count, 0);
+
+            for (size_t i = 0; i < cur_element_count; ++i) {
+                linklistsizeint *ll_cur = get_linklist_at_level(i, 0);
+                int size = getListCount(ll_cur);
+                tableint *data = (tableint *)(ll_cur + 1);
+                for (int j = 0; j < size; ++j) {
+                    tableint target = data[j];
+                    if (target >= 0 && target < cur_element_count) {
+                        indegree[target]++;
+                    }
+                }
+            }
+
+            // 统计 histogram
+            std::map<int, int> h;
+            for (size_t i = 0; i < indegree.size(); ++i) {
+                h[indegree[i]]++;
+            }
+            return h;
         }
     };
 }

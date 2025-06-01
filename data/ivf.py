@@ -5,7 +5,7 @@ import struct
 import os
 
 source = '/data/vector_datasets/'
-datasets = ['gist' , 'sift', 'deep1M']
+datasets = ['gist' , 'msong', 'tiny5m', 'sift10m']
 # the number of clusters
 K = 1024
 

@@ -3,18 +3,16 @@
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
 // #define COUNT_DIMENSION
-#define COUNT_DIST_TIME
+// #define COUNT_DIST_TIME
 
 #include <iostream>
 #include <fstream>
-
 #include <ctime>
 #include <cmath>
 #include <matrix.h>
 #include <utils.h>
 #include <hnswlib/hnswlib.h>
 #include <adsampling.h>
-
 #include <getopt.h>
 
 using namespace std;
@@ -35,7 +33,6 @@ static void get_gt(unsigned int *massQA, float *massQ, size_t vecsize, size_t qs
         }
     }
 }
-
 
 int recall(std::priority_queue<std::pair<float, labeltype >> &result, std::priority_queue<std::pair<float, labeltype >> &gt){
     unordered_set<labeltype> g;
@@ -88,6 +85,7 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     cout << "ef = " << appr_alg.ef_ << " k = " << k << endl;
     cout << "Recall = " << recall * 100.0 << "%\t" << endl;
     cout << "QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
+    cout << "Total distance calculation = " << adsampling::tot_dist_calculation << endl;
     // cout << "Time1 = " << adsampling::time1 << " us" << endl;
     // cout << "Time2 = " << adsampling::time2 << " us" << endl;
     cout << "Distance time = " << adsampling::distance_time << " us" << endl;
@@ -99,8 +97,20 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
 static void test_vs_recall(float *massQ, size_t vecsize, size_t qsize, HierarchicalNSW<float> &appr_alg, size_t vecdim,
                vector<std::priority_queue<std::pair<float, labeltype >>> &answers, size_t k, int adaptive) {
     vector<size_t> efs;
-    efs.push_back(100);
-    efs.push_back(200);
+    efs.push_back(40);
+    // efs.push_back(50);
+    // efs.push_back(60);
+    // efs.push_back(70);
+    // efs.push_back(80);
+    // efs.push_back(90);
+    // efs.push_back(100);
+    // efs.push_back(120);
+    // efs.push_back(140);
+    // efs.push_back(160);
+    // efs.push_back(180);
+    // efs.push_back(200);
+    // efs.push_back(100);
+    // efs.push_back(200);
     // efs.push_back(400);
     // efs.push_back(600);
     // efs.push_back(800);
@@ -146,9 +156,9 @@ int main(int argc, char * argv[]) {
     char transformation_path[256] = "";
 
     int randomize = 0;
-    int subk=100;
+    int subk = 1;
 
-    while(iarg != -1){
+    while(iarg != -1) {
         iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:", longopts, &ind);
         switch (iarg){
             case 'd':
@@ -201,7 +211,18 @@ int main(int argc, char * argv[]) {
 
     // appr_alg->printLayerStats();
 
-    size_t k = G.d;
+    auto indegree_histogram = appr_alg->get_indegree_histogram();
+
+    std::ofstream hist_file("msong_indegree_histogram.txt");
+    hist_file << indegree_histogram.size() << std::endl;
+    for (const auto& pair : indegree_histogram) {
+        hist_file << pair.first << " " << pair.second << std::endl;
+    }
+    hist_file.close();
+    return 0;
+
+
+    size_t k = 100;
 
     vector<std::priority_queue<std::pair<float, labeltype >>> answers;
 

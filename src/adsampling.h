@@ -29,6 +29,7 @@ long double time1 = 0, time2 = 0, time3 = 0, time4 = 0;
 unsigned long long cntt = 0;
 unsigned long long dist_cnt = 0;
 std::vector<float> diskK_vec;
+float avg_nprobe = 0.0;
 
 void clear() {
     distance_time = 0;
@@ -39,6 +40,7 @@ void clear() {
     time1 = time2 = time3 = time4 = 0;
     cntt = dist_cnt = 0;
     diskK_vec.clear();
+    avg_nprobe = 0.0;
 }
 
 // The hypothesis testing checks whether \sqrt{D/d} dis' > (1 +  epsilon0 / \sqrt{d}) * r.

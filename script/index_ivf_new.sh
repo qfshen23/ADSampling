@@ -1,47 +1,30 @@
 cd ..
 g++ -fopenmp -O3 ./src/index_ivf.cpp -o ./src/index_ivf  -I ./src/ -I /usr/include/eigen3 
-C=4096
-datasets=('gist' 'sift' 'deep1M')
 
-# prop=50
+C=4096
+datasets=('sift10m')
+adaptive=0
 
 for data in "${datasets[@]}"
 do  
-    for adaptive in {0..2}
-    do
+    echo "Indexing - ${data}"
 
-        if [ $adaptive -ne 2 ];then
-            echo "Skipping adaptive=${adaptive} for dataset ${data}"
-            continue
-        fi  
+    data_path=/data/vector_datasets/${data}
+    index_path=/data/tmp/ivf/${data}
 
-        echo "Indexing - ${data}"
+    if [ ! -d "$index_path" ]; then 
+        mkdir -p "$index_path"
+    fi
 
-        data_path=/data/vector_datasets/${data}
-        index_path=/data/tmp/ivf/${data}
+    data_file="${data_path}/${data}_base.fvecs"
+    centroid_file="${data_path}/${data}_centroid_${C}.fvecs"
 
-        if [ ! -d "$index_path" ]; then 
-            mkdir -p "$index_path"
-        fi
+    training="${data_path}/${data}_groundtruth.ivecs"
 
-        if [ $adaptive == "0" ] # raw vectors 
-        then
-            data_file="${data_path}/${data}_base.fvecs"
-            centroid_file="${data_path}/${data}_centroid_${C}.fvecs"
-        else                    # preprocessed vectors                  
-            data_file="${data_path}/O${data}_base.fvecs"
-            centroid_file="${data_path}/O${data}_centroid_${C}.fvecs"
-        fi
+    index_file="${index_path}/${data}_ivf_${C}_${adaptive}.index"
 
-        training="${data_path}/${data}_groundtruth.ivecs"
+    echo $index_file
 
-        # 0 - IVF, 1 - IVF++, 2 - IVF+
-        # index_file="${index_path}/${data}_ivf_${C}_${adaptive}_reorder.index"
-        index_file="${index_path}/${data}_ivf_${C}_${adaptive}.index"
-
-        echo $index_file
-
-        # ./src/index_ivf -d $data_file -c $centroid_file -i $index_file -a $adaptive -t $training
-        ./src/index_ivf -d $data_file -c $centroid_file -i $index_file -a $adaptive
-    done
+    # ./src/index_ivf -d $data_file -c $centroid_file -i $index_file -a $adaptive -t $training
+    ./src/index_ivf -d $data_file -c $centroid_file -i $index_file -a $adaptive
 done
