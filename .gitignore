@@ -5,3 +5,5 @@ penmp
 *.bin
 *.txt
 *.npy
+*.png
+*.pdf
