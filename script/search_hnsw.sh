@@ -9,7 +9,7 @@ adaptive=0
 
 for data in "${datasets[@]}"
 do  
-    for K in 64 256 512 1024
+    for K in 64
     do
 
         if [ $adaptive -ne 0 ];then
@@ -35,10 +35,10 @@ do
         fi
 
         # 0 - IVF, 1 - IVF++, 2 - IVF+
-        index_file="${index_path}/O${data}_ef${ef}_M${M}.index"
+        index_file="${index_path}/${data}_ef${ef}_M${M}.index"
         res="${result_path}/${data}_ef${ef}_M${M}_${adaptive}.log"
         query="${data_path}/${data}_query.fvecs"
-        gnd="${data_path}/${data}_groundtruth.ivecs"
+        gnd="${data_path}/${data}_groundtruth_10000.ivecs"
 
         depth=1
 

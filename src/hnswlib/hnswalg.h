@@ -323,7 +323,7 @@ namespace hnswlib {
             // Find the nearest centroids to the query point
             std::vector<uint32_t> nearest_centroids;
             if (has_centroids_ && !cluster_flags_.empty()) {
-                const size_t K_NEAREST = 1; // Number of nearest centroids to consider
+                const size_t K_NEAREST = 2; // Number of nearest centroids to consider
                 
                 // Calculate all distances first
                 std::vector<std::pair<dist_t, uint32_t>> centroid_distances;

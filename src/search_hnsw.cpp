@@ -59,7 +59,7 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
 
     adsampling::clear();
 
-    for (int i = 0; i < qsize; i++) {
+    for (int i = 0; i < 1000; i++) {
 
 #ifndef WIN32
         float sys_t, usr_t, usr_t_sum = 0;  
@@ -518,7 +518,8 @@ int main(int argc, char * argv[]) {
     char centroid_path[256] = "";
     char cluster_ids_path[256] = "";
     int randomize = 0;
-    int subk=100;
+
+    int subk=10000;
 
     while(iarg != -1){
         iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:f:c:l:", longopts, &ind);
@@ -595,6 +596,7 @@ int main(int argc, char * argv[]) {
     get_gt(G.data, Q.data, appr_alg->max_elements_, Q.n, l2space, Q.d, answers, k, subk, *appr_alg);
     test_vs_recall(Q.data, appr_alg->max_elements_, Q.n, *appr_alg, Q.d, answers, subk, randomize, L.data);
 
+    /*
     if (L.data != nullptr && appr_alg->hasCentroids()) {
         std::cout << "Analyzing inter-cluster and intra-cluster edges..." << std::endl;
 
@@ -635,6 +637,7 @@ int main(int argc, char * argv[]) {
             std::cout << l << "\t" << intra_percent << "%\t" << inter_percent << "%\t" << total << std::endl;
         }
     }
+    */
 
 
     return 0;
