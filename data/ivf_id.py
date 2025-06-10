@@ -4,8 +4,8 @@ import struct
 import os
 
 source = '/data/vector_datasets/'
-datasets = ['gist', 'msong']
-K = 1024
+datasets = ['sift10m']
+K = 4096
 batch_size = 10000
 
 def read_fvecs(filename, c_contiguous=True):

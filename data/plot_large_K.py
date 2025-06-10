@@ -7,7 +7,7 @@ log_K = np.log10(K_values)
 x = np.arange(len(log_K))
 width = 0.35  # Width of bars
 
-# SIFT data
+# SIFT data (saved but not plotted)
 sift_ivf_recall = [95.99, 95.14, 95.1, 94.95, 94.9]
 sift_ivf_qps = [993, 995, 671, 385, 160]
 sift_hnsw_recall = [96.5, 96.7, 96.7, 99.78, 99.98]
@@ -19,7 +19,7 @@ gist_ivf_qps = [68, 55, 34, 23, 14]
 gist_hnsw_recall = [90.2, 89.7, 90.0, 96.86, 99.4]
 gist_hnsw_qps = [541, 432, 244, 56, 10]
 
-# MSONG data
+# MSONG data (saved but not plotted)
 msong_ivf_recall = [100, 96.14, 97.6, 96.6, 95.6]
 msong_ivf_qps = [1988, 284, 146, 103, 50]
 msong_hnsw_recall = [99.7, 99.2, 98.2, 99.7, 99.9]
@@ -37,38 +37,44 @@ sift10m_ivf_qps = [269, 212, 140, 86, 38]
 sift10m_hnsw_recall = [94.3, 95.1, 93.3, 99.1, 99.8]
 sift10m_hnsw_qps = [2854, 1958, 1082, 156, 24]
 
-# Plot function
-def plot_dataset(ivf_qps, ivf_recall, hnsw_qps, hnsw_recall, title):
-    fig, ax1 = plt.subplots(figsize=(8, 6))
-    ax2 = ax1.twinx()
+# Create a figure with 1x3 subplots
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
+
+# Create shared legend handles
+ivf_qps_bar = plt.Rectangle((0,0),1,1, color='skyblue', alpha=0.7)
+hnsw_qps_bar = plt.Rectangle((0,0),1,1, color='lightgreen', alpha=0.7)
+ivf_recall_line = plt.Line2D([0], [0], color='red', linewidth=2, marker='o')
+hnsw_recall_line = plt.Line2D([0], [0], color='darkred', linewidth=2, marker='s')
+legend_elements = [ivf_qps_bar, hnsw_qps_bar, ivf_recall_line, hnsw_recall_line]
+legend_labels = ['IVF QPS', 'HNSW QPS', 'IVF Recall', 'HNSW Recall']
+
+# Helper function to plot on a specific axis
+def plot_on_axis(ax, ivf_qps, ivf_recall, hnsw_qps, hnsw_recall, title):
+    ax_twin = ax.twinx()
     
     # Plot bars
-    ax1.bar(x - width/2, ivf_qps, width, color='skyblue', alpha=0.7, label='IVF QPS')
-    ax1.bar(x + width/2, hnsw_qps, width, color='lightgreen', alpha=0.7, label='HNSW QPS')
+    ax.bar(x - width/2, ivf_qps, width, color='skyblue', alpha=0.7)
+    ax.bar(x + width/2, hnsw_qps, width, color='lightgreen', alpha=0.7)
     
     # Plot lines
-    ax2.plot(x - width/2, ivf_recall, color='red', linewidth=2, marker='o', label='IVF Recall')
-    ax2.plot(x + width/2, hnsw_recall, color='darkred', linewidth=2, marker='s', label='HNSW Recall')
+    ax_twin.plot(x - width/2, ivf_recall, color='red', linewidth=2, marker='o')
+    ax_twin.plot(x + width/2, hnsw_recall, color='darkred', linewidth=2, marker='s')
     
-    ax1.set_xlabel('K (Power of 10)')
-    ax1.set_ylabel('QPS')
-    ax2.set_ylabel('Recall (%)')
-    ax1.set_title(title)
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(log_K)
-    
-    # Combine legends
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
-    
-    plt.tight_layout()
-    plt.savefig(f'large_K_{title.lower()}.png', dpi=400)
-    plt.close()
+    ax.set_xlabel('K (Power of 10)')
+    ax.set_ylabel('QPS')
+    ax_twin.set_ylabel('Recall (%)')
+    ax.set_title(title)
+    ax.set_xticks(x)
+    ax.set_xticklabels(log_K)
 
-# Generate plots for each dataset
-plot_dataset(sift_ivf_qps, sift_ivf_recall, sift_hnsw_qps, sift_hnsw_recall, 'SIFT')
-plot_dataset(gist_ivf_qps, gist_ivf_recall, gist_hnsw_qps, gist_hnsw_recall, 'GIST')
-plot_dataset(msong_ivf_qps, msong_ivf_recall, msong_hnsw_qps, msong_hnsw_recall, 'MSONG')
-plot_dataset(tiny_ivf_qps, tiny_ivf_recall, tiny_hnsw_qps, tiny_hnsw_recall, 'Tiny5m')
-plot_dataset(sift10m_ivf_qps, sift10m_ivf_recall, sift10m_hnsw_qps, sift10m_hnsw_recall, 'SIFT10m')
+# Plot each dataset
+plot_on_axis(ax1, gist_ivf_qps, gist_ivf_recall, gist_hnsw_qps, gist_hnsw_recall, 'GIST')
+plot_on_axis(ax2, tiny_ivf_qps, tiny_ivf_recall, tiny_hnsw_qps, tiny_hnsw_recall, 'Tiny5m')
+plot_on_axis(ax3, sift10m_ivf_qps, sift10m_ivf_recall, sift10m_hnsw_qps, sift10m_hnsw_recall, 'SIFT10m')
+
+# Add single legend to the figure
+fig.legend(legend_elements, legend_labels, loc='upper right', bbox_to_anchor=(0.98, 0.98))
+
+plt.tight_layout()
+plt.savefig('large_K_comparison.png', dpi=600, bbox_inches='tight')
+plt.close()

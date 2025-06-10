@@ -34,7 +34,7 @@ lines2, labels2 = ax2.get_legend_handles_labels()
 ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
 
 plt.tight_layout()
-plt.savefig('hnsw_large_K_sift.png', dpi=400)
+plt.savefig('hnsw_large_K_sift.png', dpi=600)
 plt.close()
 
 # Plot GIST
@@ -54,7 +54,7 @@ lines2, labels2 = ax2.get_legend_handles_labels()
 ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
 
 plt.tight_layout()
-plt.savefig('hnsw_large_K_gist.png', dpi=400)    
+plt.savefig('hnsw_large_K_gist.png', dpi=600)    
 plt.close()
 
 # Plot MSONG
@@ -74,7 +74,7 @@ lines2, labels2 = ax2.get_legend_handles_labels()
 ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
 
 plt.tight_layout()
-plt.savefig('hnsw_large_K_msong.png', dpi=400)
+plt.savefig('hnsw_large_K_msong.png', dpi=600)
 plt.close()
 
 # Plot Tiny5m
@@ -97,7 +97,7 @@ lines2, labels2 = ax2.get_legend_handles_labels()
 ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
 
 plt.tight_layout()
-plt.savefig('hnsw_large_K_tiny5m.png', dpi=400)
+plt.savefig('hnsw_large_K_tiny5m.png', dpi=600)
 plt.close()
 
 # Plot SIFT10m
@@ -120,5 +120,5 @@ lines2, labels2 = ax2.get_legend_handles_labels()
 ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
 
 plt.tight_layout()
-plt.savefig('hnsw_large_K_sift10m.png', dpi=400)
+plt.savefig('hnsw_large_K_sift10m.png', dpi=600)
 plt.close()

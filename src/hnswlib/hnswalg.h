@@ -29,6 +29,8 @@ We have included detailed comments in these functions.
 #include <list>
 #include <unordered_map>
 #include <map>
+#include <fstream>
+#include <omp.h>
 
 using namespace std;
 
@@ -43,8 +45,12 @@ namespace hnswlib {
         HierarchicalNSW(SpaceInterface<dist_t> *s) {
         }
 
-        HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, bool nmslib = false, size_t max_elements=0) {
-            loadIndex(location, s, max_elements);
+        HierarchicalNSW(SpaceInterface<dist_t> *s, const std::string &location, bool pruned = false, bool nmslib = false, size_t max_elements=0) {
+            if(!pruned) {
+                loadIndex(location, s, max_elements);
+            } else {
+                loadIndexWithBuckets(location, s, buckets_);
+            }
         }
 
         HierarchicalNSW(SpaceInterface<dist_t> *s, size_t max_elements, size_t M = 16, size_t ef_construction = 200, size_t random_seed = 100) :
@@ -262,6 +268,139 @@ namespace hnswlib {
         mutable std::atomic<long> metric_distance_computations;
         mutable std::atomic<long> metric_hops;
 
+        struct SuperNodeBuckets {
+            std::map<tableint, std::vector<tableint>> buckets;  // 超点 -> bucket
+            std::unordered_set<tableint> super_nodes;           // 超点集合
+            std::unordered_set<tableint> pruned_nodes;          // 被裁剪点集合
+        };
+
+        mutable SuperNodeBuckets buckets_;
+ 
+        SuperNodeBuckets prune_and_bucket_points(float percent) {
+            size_t N = cur_element_count;
+            std::vector<tableint> level0_nodes;
+            for (tableint i = 0; i < N; ++i) {
+                if (element_levels_[i] == 0)
+                    level0_nodes.push_back(i);
+            }
+            size_t L0 = level0_nodes.size();
+
+            // 2. 只对 level=0 的点做 in-degree 排序，选最低 x%
+            std::vector<int> indegree(N, 0);
+            for (size_t i = 0; i < N; ++i) {
+                auto *ll = get_linklist0(i);
+                int sz = getListCount(ll);
+                tableint *data = (tableint*)(ll + 1);
+                for (int j = 0; j < sz; ++j) {
+                    if (data[j] >= 0 && data[j] < N)
+                        indegree[data[j]]++;
+                }
+            }
+
+            // 排序只用 level0_nodes
+            std::sort(level0_nodes.begin(), level0_nodes.end(), [&](tableint a, tableint b){
+                return indegree[a] < indegree[b];
+            });
+            size_t num_prune = static_cast<size_t>(L0 * percent / 100.0);
+            std::unordered_set<tableint> pruned_nodes(level0_nodes.begin(), level0_nodes.begin() + num_prune);
+
+            // 超点 = 所有没被 prune 的 level=0 节点 + 所有 level>0 的节点
+            std::unordered_set<tableint> super_nodes;
+            for (tableint i = 0; i < N; ++i) {
+                if (pruned_nodes.count(i) == 0)
+                    super_nodes.insert(i);
+            }
+
+            std::map<tableint, std::vector<tableint>> buckets;
+            #pragma omp parallel for schedule(dynamic)
+            for (int k = 0;k < pruned_nodes.size();++k) {
+                tableint pid = level0_nodes[k];
+                std::vector<tableint> in_neighbors;
+                for (size_t i = 0; i < N; ++i) {
+                    if (super_nodes.count(i) == 0) continue;
+                    auto *ll = get_linklist0(i);
+                    int sz = getListCount(ll);
+                    tableint *data = (tableint*)(ll + 1);
+                    for (int j = 0; j < sz; ++j) {
+                        if (data[j] == pid)
+                            in_neighbors.push_back(i);
+                    }
+                }
+
+                // Add pruned point to all points that point to it
+                if (!in_neighbors.empty()) {
+                    #pragma omp critical
+                    {
+                        for (auto neighbor : in_neighbors) {
+                            buckets[neighbor].push_back(pid);
+                        }
+                    }
+                } else {
+                    // If no points point to it, find 20 nearest super points
+                    std::vector<std::pair<dist_t, tableint>> distances;
+                    for (auto sid : super_nodes) {
+                        dist_t dist = fstdistfunc_(getDataByInternalId(pid),
+                                                 getDataByInternalId(sid),
+                                                 dist_func_param_);
+                        distances.emplace_back(dist, sid);
+                    }
+
+                    // Sort by distance and take nearest 20
+                    std::sort(distances.begin(), distances.end());
+                    size_t num_nearest = std::min(size_t(20), distances.size());
+
+                    #pragma omp critical
+                    {
+                        for (size_t i = 0; i < num_nearest; i++) {
+                            buckets[distances[i].second].push_back(pid);
+                        }
+                    }
+                }
+            }
+            return SuperNodeBuckets{buckets, super_nodes, pruned_nodes};
+        }
+
+        void prune_index_structure_keep_id(std::unordered_set<tableint>& pruned_nodes) {
+            size_t N = cur_element_count;
+            for (auto pid : pruned_nodes) {
+                // 清空最底层邻接表
+                auto *ll = get_linklist0(pid);
+                setListCount(ll, 0);
+            }
+
+            // 2. 移除所有节点邻接表里指向 pruned 节点的边
+            for (tableint i = 0; i < N; ++i) {
+                // 最底层
+                auto *ll0 = get_linklist0(i);
+                int sz0 = getListCount(ll0);
+                tableint *data0 = (tableint*)(ll0 + 1);
+                int write_idx = 0;
+                for (int j = 0; j < sz0; ++j) {
+                    if (pruned_nodes.count(data0[j]) == 0) {
+                        data0[write_idx++] = data0[j];
+                    }
+                }
+                setListCount(ll0, write_idx);
+            }
+        }
+
+        void saveIndexWithBuckets(SuperNodeBuckets& buckets,
+                                std::string& filename) {
+            saveIndex(filename); // 假设它保存原始 graph（不保存 pruned 点的边）
+            std::ofstream output(filename, std::ios::binary | std::ios::app);
+            // 追加 bucket 信息
+            size_t n_super = buckets.super_nodes.size();
+            output.write((char*)&n_super, sizeof(n_super));
+            for (auto sid : buckets.super_nodes) {
+                output.write((char*)&sid, sizeof(sid));
+                size_t bucket_sz = buckets.buckets.count(sid) ? buckets.buckets.at(sid).size() : 0;
+                output.write((char*)&bucket_sz, sizeof(bucket_sz));
+                if (bucket_sz > 0)
+                    output.write((char*)buckets.buckets.at(sid).data(), sizeof(tableint) * bucket_sz);
+            }
+            output.close();
+        }
+
         template <bool has_deletions, bool collect_metrics=false>
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
         searchBaseLayerST(tableint ep_id, const void *data_point, size_t ef) const {
@@ -269,12 +408,23 @@ namespace hnswlib {
             vl_type *visited_array = vl->mass;
             vl_type visited_array_tag = vl->curV;
 
+            vector<tableint> visited;
+            visited.reserve(ef);
+
+            bool stop_flag = false;
+
             // top_candidates - the result set R
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
+            // tmp candidates
+            // std::unordered_set<tableint> first_ef_candidates;
+            // top_tri_candidates
+            // std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_tri_candidates;
             // candidate_set  - the search set S
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
 
             dist_t lowerBound;
+            // dist_t tri_lowerBound;
+            // size_t trief = ef - 1;
             // Insert the entry point to the result and search set with its exact distance as a key. 
             if (!has_deletions || !isMarkedDeleted(ep_id)) {
 #ifdef COUNT_DIST_TIME
@@ -287,11 +437,15 @@ namespace hnswlib {
                 adsampling::tot_dist_calculation++;
                 adsampling::tot_full_dist ++;
                 lowerBound = dist;
+                // tri_lowerBound = dist;
                 top_candidates.emplace(dist, ep_id);
+                // top_tri_candidates.emplace(dist, ep_id);
                 candidate_set.emplace(-dist, ep_id);
-            } 
-            else {
+                visited.push_back(ep_id);
+                // first_ef_candidates.insert(ep_id);
+            } else {
                 lowerBound = std::numeric_limits<dist_t>::max();
+                // tri_lowerBound = std::numeric_limits<dist_t>::max();
                 candidate_set.emplace(-lowerBound, ep_id);
             }
 
@@ -308,6 +462,8 @@ namespace hnswlib {
                 }
                 candidate_set.pop();
 
+                // dist_t candidate_dist = -current_node_pair.first;
+
                 // Fetch the smallest object in S. 
                 tableint current_node_id = current_node_pair.second;
                 int *data = (int *) get_linklist0(current_node_id);
@@ -320,9 +476,17 @@ namespace hnswlib {
                 // Enumerate all the neighbors of the object and view them as candidates of KNNs. 
                 for (size_t j = 1; j <= size; j++) {
                     int candidate_id = *(data + j);
+                    // float candidate_neighbor_dist = fstdistfunc_(data_point, getDataByInternalId(candidate_id), dist_func_param_);
+                    // if(top_candidates.size() == ef){ // trihnsw
+                    //     float tmp = candidate_dist + candidate_neighbor_dist - tri_lowerBound;
+                    //     if (tmp * tmp > 4 * candidate_dist * candidate_neighbor_dist && candidate_dist > candidate_neighbor_dist && tmp > 0) {
+                    //         visited_array[candidate_id] = visited_array_tag;
+                    //     }
+                    // }
                     if (!(visited_array[candidate_id] == visited_array_tag)) {
                         cnt_visit ++;
                         visited_array[candidate_id] = visited_array_tag;
+                        visited.push_back(candidate_id);
 
                         // Conduct DCO with FDScanning wrt the N_ef th NN: 
                         // (1) calculate its exact distance 
@@ -336,6 +500,9 @@ namespace hnswlib {
                         adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif                  
                         adsampling::tot_full_dist ++;
+                        // if(top_candidates.size() < ef) {
+                        //     first_ef_candidates.insert(candidate_id);
+                        // }
                         if (top_candidates.size() < ef || lowerBound > dist) {                      
                             candidate_set.emplace(-dist, candidate_id);
                             if (!has_deletions || !isMarkedDeleted(candidate_id))
@@ -347,9 +514,65 @@ namespace hnswlib {
                             if (!top_candidates.empty())
                                 lowerBound = top_candidates.top().first;
                         }
+
+                        // { // trihnsw
+                        //     bool flag_remove_extra_tri = top_tri_candidates.size() > trief;
+                        //     while(flag_remove_extra_tri) {
+                        //         top_tri_candidates.pop();
+                        //         flag_remove_extra_tri = top_tri_candidates.size() > trief;
+                        //     }
+
+                        //     if(!top_tri_candidates.empty())
+                        //         tri_lowerBound = top_tri_candidates.top().first;
+                        // }
+                        
                     }
                 }
+                /*
+                if(buckets_.super_nodes.count(current_node_id) > 0) {
+                    for (auto candidate_id : buckets_.buckets[current_node_id]) {
+                        if (!(visited_array[candidate_id] == visited_array_tag)) { 
+                            visited_array[candidate_id] = visited_array_tag;
+                            char *currObj1 = (getDataByInternalId(candidate_id));
+    #ifdef COUNT_DIST_TIME
+                            StopW stopw = StopW();
+    #endif
+                            dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
+    #ifdef COUNT_DIST_TIME
+                            adsampling::distance_time += stopw.getElapsedTimeMicro();
+    #endif                  
+                            adsampling::tot_full_dist ++;
+                            if (top_candidates.size() < ef || lowerBound > dist) {                      
+                                candidate_set.emplace(-dist, candidate_id);
+                                if (!has_deletions || !isMarkedDeleted(candidate_id))
+                                    top_candidates.emplace(dist, candidate_id);
+
+                                if (top_candidates.size() > ef)
+                                    top_candidates.pop();
+
+                                if (!top_candidates.empty())
+                                    lowerBound = top_candidates.top().first;
+                            }
+                        }
+                    }
+                }
+                */
             }
+
+            adsampling::visited_array.push_back(visited);
+            // adsampling::lower_bounds.push_back(lower_bound_list);
+
+            // auto tmp_candidates = top_candidates;
+            // int cnt_tmp = 0;
+            // while(!tmp_candidates.empty()) {
+            //     auto top_candidate = tmp_candidates.top();
+            //     if(first_ef_candidates.count(top_candidate.second) > 0) {
+            //         cnt_tmp++;
+            //     }
+            //     tmp_candidates.pop();
+            // }
+            // adsampling::first_ef_candidates += cnt_tmp;
+
             adsampling::tot_dist_calculation += cnt_visit;
             visited_list_pool_->releaseVisitedList(vl);
             return top_candidates;
@@ -600,6 +823,7 @@ namespace hnswlib {
             visited_list_pool_->releaseVisitedList(vl);
             return answers;
         }
+        
         void getNeighborsByHeuristic2(
                 std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
         const size_t M) {
@@ -641,7 +865,6 @@ namespace hnswlib {
                 top_candidates.emplace(-curent_pair.first, curent_pair.second);
             }
         }
-
 
         linklistsizeint *get_linklist0(tableint internal_id) const {
             return (linklistsizeint *) (data_level0_memory_ + internal_id * size_data_per_element_ + offsetLevel0_);
@@ -930,6 +1153,8 @@ namespace hnswlib {
 
             /// Optional - check if index is ok:
 
+            /*
+
             input.seekg(cur_element_count * size_data_per_element_,input.cur);
             for (size_t i = 0; i < cur_element_count; i++) {
                 if(input.tellg() < 0 || input.tellg()>=total_filesize){
@@ -946,7 +1171,7 @@ namespace hnswlib {
             // throw exception if it either corrupted or old index
             if(input.tellg()!=total_filesize)
                 throw std::runtime_error("Index seems to be corrupted or unsupported");
-
+            */
             input.clear();
 
             /// Optional check end
@@ -999,6 +1224,41 @@ namespace hnswlib {
             return;
         }
 
+        void loadIndexWithBuckets(const std::string& filename, SpaceInterface<dist_t> *s, SuperNodeBuckets& buckets) {
+            std::ifstream input(filename, std::ios::binary);
+            if (!input.is_open()) {
+                throw std::runtime_error("Cannot open index file: " + filename);
+            }
+
+            // 1. 先读 HNSW index（假设 hnsw->loadIndex 支持 ifstream&，否则用 string 跳到 bucket 部分）
+            loadIndex(filename, s); // 若为成员函数适配
+
+            // 2. 定位到 bucket 部分  
+            // 简单做法：重新打开文件，再次 seek 到 index 尾部（需要你提前知道 index 部分有多大）
+            // 推荐更健壮方案：先读 index，再读 bucket（saveIndexWithBuckets 时记下了结构/顺序）
+
+            // 3. 读取 bucket
+            size_t n_super = 0;
+            input.read(reinterpret_cast<char*>(&n_super), sizeof(n_super));
+            for (size_t i = 0; i < n_super; ++i) {
+                hnswlib::tableint sid;
+                input.read(reinterpret_cast<char*>(&sid), sizeof(sid));
+                buckets.super_nodes.insert(sid);
+
+                size_t bucket_sz = 0;
+                input.read(reinterpret_cast<char*>(&bucket_sz), sizeof(bucket_sz));
+                std::vector<hnswlib::tableint> vec;
+                for (size_t j = 0; j < bucket_sz; ++j) {
+                    hnswlib::tableint pid;
+                    input.read(reinterpret_cast<char*>(&pid), sizeof(pid));
+                    vec.push_back(pid);
+                    buckets.pruned_nodes.insert(pid);
+                }
+                buckets.buckets[sid] = std::move(vec);
+            }
+            input.close();
+        }
+        
         template<typename data_t>
         std::vector<data_t> getDataByLabel(labeltype label) const
         {

@@ -355,8 +355,14 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     std::partial_sort(centroid_dist, centroid_dist + nprobe, centroid_dist + C);
 
     ResultHeap KNNs;
-    
-    if(false) {
+
+    // mode == 0: exact dcos
+    // mode == 1: random partial dcos
+    // mode == 2: first k vectors
+    // mode == 3: random select x% dimension do the first stage ranking, then re-rank with exact dcos
+    int mode = 3;
+
+    if(mode == 0) {
         size_t ncan = 0;
         for(int i=0;i<nprobe;i++) {
             ncan += len[centroid_dist[i].second];
@@ -430,7 +436,67 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
         delete [] dist;
         delete [] candidates;
         delete [] obj;
-    } else {
+    } else if(mode == 1) {
+        size_t ncan = 0;
+        for(int i=0;i<nprobe;i++) {
+            ncan += len[centroid_dist[i].second];
+        }
+
+        adsampling::nprobe_vectors += (unsigned long long)ncan;
+            
+        // Collect all candidate vectors from selected clusters
+        std::vector<size_t> all_candidates;
+        for(int i=0;i < nprobe;i++) {
+            int cluster_id = centroid_dist[i].second;
+            for(int j=0;j<len[cluster_id];j++){
+                size_t can = start[cluster_id] + j;
+                all_candidates.push_back(can);
+            }    
+        }
+        
+        // Randomly select x vectors (where x > k)
+        size_t x = 79000;
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::shuffle(all_candidates.begin(), all_candidates.end(), gen);
+        
+        // Calculate distances for the randomly selected x vectors
+        for(size_t i = 0; i < x && i < all_candidates.size(); i++) {
+            size_t can = all_candidates[i];
+            
+    #ifdef COUNT_DIST_TIME
+            StopW stopw = StopW();
+    #endif
+            float tmp_dist;
+            if(d == D) {
+                // Full distance calculation
+                tmp_dist = sqr_dist(query, L1_data + can * d, d);
+                adsampling::tot_full_dist++;
+            } else {
+                // ADSampling distance calculation
+                float partial_dist = 0;
+                if(d > 0) {
+                    partial_dist = sqr_dist(query, L1_data + can * d, d);
+                    adsampling::tot_full_dist++;
+                }
+                tmp_dist = adsampling::dist_comp(distK, res_data + can * (D-d), query + d, partial_dist, d);
+            }
+            
+    #ifdef COUNT_DIST_TIME
+            adsampling::distance_time += stopw.getElapsedTimeMicro();
+    #endif
+            
+            if(d == D || tmp_dist > 0) {
+                KNNs.emplace(tmp_dist, id[can]);
+                if(KNNs.size() > k) KNNs.pop();
+                
+                // Update distK for pruning in ADSampling
+                if(KNNs.size() == k && KNNs.top().first < distK){
+                    distK = KNNs.top().first;
+                }
+            }
+        }
+    } else if(mode == 2) {
         int cnt = 0;
         for(int i = 0;i < nprobe;i++) {
             int cluster_id = centroid_dist[i].second;
@@ -445,11 +511,80 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
                 break;
             }
         }
-
-        delete [] centroid_dist;
-        return KNNs;
+    } else if(mode == 3) {
+        // Mode 3: Random select x% dimensions for first stage ranking, then re-rank with exact DCOs
+        float dimension_ratio = 0.50;
+        int first_stage_dim = std::max(1, (int)(D * dimension_ratio));
+        
+        // Create random dimension indices for first stage
+        std::vector<int> dim_indices;
+        for(int i = 0; i < D; i++) {
+            dim_indices.push_back(i);
+        }
+        std::random_shuffle(dim_indices.begin(), dim_indices.end());
+        
+        // Collect all candidates with partial distance computation
+        std::vector<std::pair<float, size_t>> first_stage_candidates;
+        size_t ncan = 0;
+        for(int i = 0; i < nprobe; i++) {
+            ncan += len[centroid_dist[i].second];
+        }
+        first_stage_candidates.reserve(ncan);
+        
+        for(int i = 0; i < nprobe; i++) {
+            int cluster_id = centroid_dist[i].second;
+            for(int j = 0; j < len[cluster_id]; j++) {
+                size_t can = start[cluster_id] + j;
+                
+                // Compute partial distance using random x% dimensions
+                float partial_dist = 0;
+                for(int k = 0; k < first_stage_dim; k++) {
+                    int dim_idx = dim_indices[k];
+                    float diff = query[dim_idx] - L1_data[can * d + (dim_idx < d ? dim_idx : 0)];
+                    if(dim_idx >= d) {
+                        diff = query[dim_idx] - res_data[can * (D-d) + (dim_idx - d)];
+                    }
+                    partial_dist += diff * diff;
+                }
+                
+                first_stage_candidates.emplace_back(partial_dist, can);
+            }
+        }
+        
+        // Sort candidates by partial distance and keep top candidates for re-ranking
+        size_t rerank_size = 20000;
+        std::partial_sort(first_stage_candidates.begin(), 
+                         first_stage_candidates.begin() + rerank_size,
+                         first_stage_candidates.end());
+        
+        // Re-rank with exact distance computation
+        for(size_t i = 0; i < rerank_size; i++) {
+            size_t can = first_stage_candidates[i].second;
+            
+    #ifdef COUNT_DIST_TIME
+            StopW stopw = StopW();
+    #endif
+            float exact_dist;
+            if(d == D) {
+                exact_dist = sqr_dist(query, L1_data + can * d, d);
+            } else {
+                float partial_dist = 0;
+                if(d > 0) {
+                    partial_dist = sqr_dist(query, L1_data + can * d, d);
+                }
+                exact_dist = partial_dist + sqr_dist(query + d, res_data + can * (D-d), D-d);
+            }
+            adsampling::tot_full_dist++;
+            
+    #ifdef COUNT_DIST_TIME
+            adsampling::distance_time += stopw.getElapsedTimeMicro();
+    #endif
+            
+            KNNs.emplace(exact_dist, id[can]);
+            if(KNNs.size() > k) KNNs.pop();
+        }
     }
-    
+
     delete [] centroid_dist;
     return KNNs;
 }

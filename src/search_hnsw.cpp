@@ -35,18 +35,45 @@ static void get_gt(unsigned int *massQA, float *massQ, size_t vecsize, size_t qs
 }
 
 int recall(std::priority_queue<std::pair<float, labeltype >> &result, std::priority_queue<std::pair<float, labeltype >> &gt){
-    unordered_set<labeltype> g;
-    int ret = 0;
-    while (gt.size()) {
-        g.insert(gt.top().second);
+    // Use vectors instead of priority queues for better performance
+    vector<labeltype> gt_labels;
+    vector<labeltype> result_labels;
+    
+    // Reserve space to avoid reallocations
+    gt_labels.reserve(gt.size());
+    result_labels.reserve(result.size());
+    
+    // Extract labels from priority queues
+    while (!gt.empty()) {
+        gt_labels.push_back(gt.top().second);
         gt.pop();
     }
-    while (result.size()) {
-        if (g.find(result.top().second) != g.end()) {
-            ret++;
-        }
+    
+    while (!result.empty()) {
+        result_labels.push_back(result.top().second);
         result.pop();
-    }    
+    }
+    
+    // Sort both vectors for efficient intersection
+    sort(gt_labels.begin(), gt_labels.end());
+    sort(result_labels.begin(), result_labels.end());
+    
+    // Count intersection using two pointers approach
+    int ret = 0;
+    size_t i = 0, j = 0;
+    
+    while (i < gt_labels.size() && j < result_labels.size()) {
+        if (gt_labels[i] == result_labels[j]) {
+            ret++;
+            i++;
+            j++;
+        } else if (gt_labels[i] < result_labels[j]) {
+            i++;
+        } else {
+            j++;
+        }
+    }
+    
     return ret;
 }
 
@@ -59,16 +86,13 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
 
     adsampling::clear();
 
-    for (int i = 0; i < qsize; i++) {
-
+    for (int i = 0; i < min(qsize, (size_t)1000); i++) {
 #ifndef WIN32
         float sys_t, usr_t, usr_t_sum = 0;  
         struct rusage run_start, run_end;
         GetCurTime( &run_start);
 #endif
-
         std::priority_queue<std::pair<float, labeltype >> result = appr_alg.searchKnn(massQ + vecdim * i, k, adaptive);  
-
 #ifndef WIN32
         GetCurTime( &run_end);
         GetTime( &run_start, &run_end, &usr_t, &sys_t);
@@ -90,8 +114,36 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     // cout << "Time2 = " << adsampling::time2 << " us" << endl;
     cout << "Distance time = " << adsampling::distance_time << " us" << endl;
     cout << "Total time = " << total_time << " us" << endl;
+    cout << "First ef candidates = " << adsampling::first_ef_candidates << endl;
+
+    // Save visited array to disk
+    std::ofstream va_file("/home/qfshen/workspace/vdb/adsampling/data/sift_visited_array_10K.bin", std::ios::binary);
+    if (va_file.is_open()) {
+        size_t num_queries = adsampling::visited_array.size();
+        va_file.write(reinterpret_cast<char*>(&num_queries), sizeof(size_t));
+        
+        for (const auto& query_array : adsampling::visited_array) {
+            size_t array_size = query_array.size();
+            va_file.write(reinterpret_cast<char*>(&array_size), sizeof(size_t));
+            va_file.write(reinterpret_cast<const char*>(query_array.data()), array_size * sizeof(tableint));
+        }
+        va_file.close();
+    }
+
+    // Save lower bounds to disk
+    // std::ofstream lb_file("/home/qfshen/workspace/vdb/adsampling/data/sift_lower_bounds_10K.bin", std::ios::binary);
+    // if (lb_file.is_open()) {
+    //     size_t num_vectors = adsampling::lower_bounds.size();
+    //     lb_file.write(reinterpret_cast<char*>(&num_vectors), sizeof(size_t));
+        
+    //     for (const auto& vec : adsampling::lower_bounds) {
+    //         size_t vec_size = vec.size();
+    //         lb_file.write(reinterpret_cast<char*>(&vec_size), sizeof(size_t));
+    //         lb_file.write(reinterpret_cast<const char*>(vec.data()), vec_size * sizeof(float));
+    //     }
+    //     lb_file.close();
+    // }
     // cout << appr_alg.ef_ << " " << recall * 100.0 << " " << time_us_per_query << " " << adsampling::tot_dimension + adsampling::tot_full_dist * vecdim << endl;
-    return ;
 }
 
 static void test_vs_recall(float *massQ, size_t vecsize, size_t qsize, HierarchicalNSW<float> &appr_alg, size_t vecdim,
@@ -112,9 +164,7 @@ static void test_vs_recall(float *massQ, size_t vecsize, size_t qsize, Hierarchi
     // efs.push_back(100);
     // efs.push_back(200);
     // efs.push_back(400);
-    // efs.push_back(600);
-    // efs.push_back(800);
-    // efs.push_back(1000);
+    // efs.push_back(201000);
     // efs.push_back(1500);
     // efs.push_back(2000);
     for (size_t ef : efs) {
@@ -133,7 +183,6 @@ int main(int argc, char * argv[]) {
         {"randomized",                  required_argument, 0, 'd'},
         {"k",                           required_argument, 0, 'k'},
         {"epsilon0",                    required_argument, 0, 'e'},
-        {"gap",                         required_argument, 0, 'p'},
 
         // Indexing Path 
         {"dataset",                     required_argument, 0, 'n'},
@@ -142,6 +191,7 @@ int main(int argc, char * argv[]) {
         {"groundtruth_path",            required_argument, 0, 'g'},
         {"result_path",                 required_argument, 0, 'r'},
         {"transformation_path",         required_argument, 0, 't'},
+        {"prune_prop",                  required_argument, 0, 'p'},
     };
 
     int ind;
@@ -154,9 +204,10 @@ int main(int argc, char * argv[]) {
     char result_path[256] = "";
     char dataset[256] = "";
     char transformation_path[256] = "";
+    float prune_prop = 0.0;
 
     int randomize = 0;
-    int subk = 1;
+    int subk = 10000;
 
     while(iarg != -1) {
         iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:", longopts, &ind);
@@ -169,9 +220,6 @@ int main(int argc, char * argv[]) {
                 break;
             case 'e':
                 if(optarg) adsampling::epsilon0 = atof(optarg);
-                break;
-            case 'p':
-                if(optarg) adsampling::delta_d = atoi(optarg);
                 break;
             case 'i':
                 if(optarg)strcpy(index_path, optarg);
@@ -191,6 +239,9 @@ int main(int argc, char * argv[]) {
             case 'n':
                 if(optarg)strcpy(dataset, optarg);
                 break;
+            case 'p':
+                if(optarg) prune_prop = atof(optarg);
+                break;
         }
     }   
 
@@ -207,25 +258,29 @@ int main(int argc, char * argv[]) {
     }
     
     L2Space l2space(Q.d);
-    HierarchicalNSW<float> *appr_alg = new HierarchicalNSW<float>(&l2space, index_path, false);
+    HierarchicalNSW<float> *appr_alg = nullptr;
+    if(abs(prune_prop) > 0.00001) {
+        appr_alg = new HierarchicalNSW<float>(&l2space, index_path, true);
+    } else {
+        appr_alg = new HierarchicalNSW<float>(&l2space, index_path, false);
+    }
 
     // appr_alg->printLayerStats();
 
-    auto indegree_histogram = appr_alg->get_indegree_histogram();
+    // auto indegree_histogram = appr_alg->get_indegree_histogram();
 
-    std::ofstream hist_file("msong_indegree_histogram.txt");
-    hist_file << indegree_histogram.size() << std::endl;
-    for (const auto& pair : indegree_histogram) {
-        hist_file << pair.first << " " << pair.second << std::endl;
-    }
-    hist_file.close();
-    return 0;
+    // std::ofstream hist_file("msong_indegree_histogram.txt");
+    // hist_file << indegree_histogram.size() << std::endl;
+    // for (const auto& pair : indegree_histogram) {
+    //     hist_file << pair.first << " " << pair.second << std::endl;
+    // }
+    // hist_file.close();
+    // return 0;
 
 
-    size_t k = 100;
+    size_t k = 10000;
 
     vector<std::priority_queue<std::pair<float, labeltype >>> answers;
-
     get_gt(G.data, Q.data, appr_alg->max_elements_, Q.n, l2space, Q.d, answers, k, subk, *appr_alg);
     test_vs_recall(Q.data, appr_alg->max_elements_, Q.n, *appr_alg, Q.d, answers, subk, randomize);
     return 0;

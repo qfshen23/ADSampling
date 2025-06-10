@@ -30,6 +30,10 @@ unsigned long long cntt = 0;
 unsigned long long dist_cnt = 0;
 std::vector<float> diskK_vec;
 float avg_nprobe = 0.0;
+vector<vector<float>> lower_bounds;
+unsigned long long nprobe_vectors = 0;
+unsigned long long first_ef_candidates = 0;
+vector<vector<unsigned int>> visited_array;
 
 void clear() {
     distance_time = 0;
@@ -41,6 +45,10 @@ void clear() {
     cntt = dist_cnt = 0;
     diskK_vec.clear();
     avg_nprobe = 0.0;
+    lower_bounds.clear();
+    nprobe_vectors = 0;
+    first_ef_candidates = 0;    
+    visited_array.clear();
 }
 
 // The hypothesis testing checks whether \sqrt{D/d} dis' > (1 +  epsilon0 / \sqrt{d}) * r.

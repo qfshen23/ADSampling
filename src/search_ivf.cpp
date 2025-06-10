@@ -38,7 +38,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     // nprobes.push_back(25);
     // nprobes.push_back(35);
     // nprobes.push_back(30);
-    nprobes.push_back(100);
+    nprobes.push_back(60);
     // nprobes.push_back(45);
     // nprobes.push_back(50);
     // nprobes.push_back(55);
@@ -110,6 +110,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         cout << "Time = " << time_us_per_query << " us \t QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
         cout << "Number of DCO: " << adsampling::tot_full_dist / Q.n << endl;
         cout << "Average nprobe: " << adsampling::avg_nprobe / Q.n << endl;
+        cout << "Average nprobe vectors: " << adsampling::nprobe_vectors / Q.n << endl;
         // cout << "total_time: " << total_time << ", time1 = " << adsampling::time1 << " time2 = " << adsampling::time2 - adsampling::time3 << " time3 = " << adsampling::time3 << endl;
         // cout << "time1 proportion: " << adsampling::time1 / total_time * 100 << "%, time2 proportion: " << (adsampling::time2) / total_time * 100 << "%, time3 proportion: " << adsampling::time3 / total_time * 100 << ", other" << (total_time - adsampling::time1 - adsampling::time2 - adsampling::time3) / total_time * 100 << "%" << endl;
         // cout << "time1: " << adsampling::time1 << ", time2: " << adsampling::time2 << ", time3: " << adsampling::time3 << endl;
