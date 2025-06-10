@@ -4,3 +4,4 @@ venv/
 penmp
 *.bin
 *.txt
+*.npy
