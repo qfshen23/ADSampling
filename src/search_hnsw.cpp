@@ -117,7 +117,7 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     cout << "First ef candidates = " << adsampling::first_ef_candidates << endl;
 
     // Save visited array to disk
-    std::ofstream va_file("/home/qfshen/workspace/vdb/adsampling/data/sift_visited_array_10K.bin", std::ios::binary);
+    std::ofstream va_file("/home/qfshen/workspace/vdb/adsampling/data/sift_visited_array_1K.bin", std::ios::binary);
     if (va_file.is_open()) {
         size_t num_queries = adsampling::visited_array.size();
         va_file.write(reinterpret_cast<char*>(&num_queries), sizeof(size_t));
@@ -207,7 +207,7 @@ int main(int argc, char * argv[]) {
     float prune_prop = 0.0;
 
     int randomize = 0;
-    int subk = 10000;
+    int subk = 1000;
 
     while(iarg != -1) {
         iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:", longopts, &ind);
@@ -248,7 +248,7 @@ int main(int argc, char * argv[]) {
     Matrix<unsigned> G(groundtruth_path);
     Matrix<float> Q(query_path);
 
-    freopen(result_path,"a",stdout);
+    freopen(result_path, "a", stdout);
     if(randomize){
         Matrix<float> P(transformation_path);
         StopW stopw = StopW();
