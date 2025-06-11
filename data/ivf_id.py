@@ -35,13 +35,13 @@ def compute_and_save_cluster_ids(X, centroids_path, ids_path, batch_size):
             # Compute distances to all centroids
             distances = faiss.pairwise_distances(batch, centroids)
             
-            # Get nearest centroid indices
+            # Get nearest centroid indices (starting from 0)
             cluster_ids = np.argmin(distances, axis=1)
             
             # Save cluster IDs
             for cluster_id in cluster_ids:
                 f.write(struct.pack('i', 1))  # Write dimension (always 1)
-                f.write(struct.pack('i', int(cluster_id)))  # Write cluster ID as int32
+                f.write(struct.pack('i', int(cluster_id)))  # Write cluster ID as int32, starting from 0
                 
     print(f"Cluster IDs saved to: {ids_path}")
 
