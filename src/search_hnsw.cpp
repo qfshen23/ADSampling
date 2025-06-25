@@ -57,10 +57,14 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     size_t total = 0;
     long double total_time = 0;
 
+    // Create vectors to store hop counts for each rank
+    static vector<int> hop_sums(10000, 0);
+    static vector<int> hop_counts(10000, 0);
+
     adsampling::clear();
 
-    for (int i = 0; i < 1000; i++) {
-
+    for (int i = 0; i < 10000; i++) {
+        adsampling::visited_hop.clear();
 #ifndef WIN32
         float sys_t, usr_t, usr_t_sum = 0;  
         struct rusage run_start, run_end;
@@ -75,325 +79,40 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
         total_time += usr_t * 1e6;
 #endif
 
-        // if(i == 0) {
-        //     appr_alg.collectLayer1Vertices();
-            
-        //     // Write layer1 vertices to a local file
-        //     std::ofstream layer1_file("sift_layer1_vertices.txt");
-        //     if (layer1_file.is_open()) {
-        //         for (size_t j = 0; j < appr_alg.layer1_vertices_.size(); ++j) {
-        //             layer1_file << appr_alg.layer1_vertices_[j] << endl;
-        //         }
-        //         layer1_file.close();
-        //     }
-        // }
-
-        /*
-        // Check if we have cluster IDs available
-        if (cluster_ids != nullptr) {
-            // Get the entry point's cluster ID
-            tableint entry_id = appr_alg.entry_id_;
-
-            // Count how many ground truth points share a cluster with the entry point
-            int same_cluster_count = 0;
-            int total_gt_points = answers[i].size();
-            
-            // Get the entry point's cluster ID
-            unsigned entry_cluster_id = cluster_ids[entry_id];
-            
-            // Create a copy of answers[i] to iterate through
-            std::priority_queue<std::pair<float, labeltype>> gt_copy = answers[i];
-
-            int idx = 99;
-            
-            while (!gt_copy.empty()) {
-                labeltype gt_label = gt_copy.top().second;
-                
-                // Get the ground truth point's cluster ID
-                unsigned gt_cluster_id = cluster_ids[gt_label];
-                
-                // Check if the ground truth point is in the same cluster as the entry point
-                if (gt_cluster_id == entry_cluster_id) {
-                    same_cluster_count++;
-                    adsampling::avg_gt_in_same_cluster_vec[idx]++;
-                }
-                
-                gt_copy.pop();
-                idx--;
-            }
-            
-            float percentage = (total_gt_points > 0) ? (100.0f * same_cluster_count / total_gt_points) : 0.0f;
-            adsampling::avg_gt_in_same_cluster += percentage;
-        }
-
-        {
-            int same_cluster_count = 0;
-            int total_gt_points = answers[i].size();
-            // check the query in the same cluster as the gt kNNs
-            auto query_cluster_ids = appr_alg.query_nearest_centroids_;
-            std::priority_queue<std::pair<float, labeltype>> gt_copy = answers[i];
-
-            int idx = 99;
-                
-            while (!gt_copy.empty()) {
-                labeltype gt_label = gt_copy.top().second;
-                
-                // Get the ground truth point's cluster ID
-                unsigned gt_cluster_id = cluster_ids[gt_label];
-                
-                // Check if the ground truth point is in the same cluster as the entry point
-                for (auto query_cluster_id : query_cluster_ids) {
-                    if (gt_cluster_id == query_cluster_id) {
-                        same_cluster_count++;
-                        adsampling::avg_query_in_same_cluster_vec[idx]++;
-                        break;
-                    }
-                }
-                
-                gt_copy.pop();
-                idx--;
-            }
-            
-            float percentage = (total_gt_points > 0) ? (100.0f * same_cluster_count / total_gt_points) : 0.0f;
-            adsampling::avg_query_in_same_cluster += percentage;
-        }
-
-        
-        if(i % 10 == 0) {
-            // Convert result and answers[i] to vectors for analyzePrunedCandidates
-            std::vector<tableint> result_vec;
-            std::vector<tableint> gt_vec;
-            // Copy result priority queue to vector
-            std::priority_queue<std::pair<float, labeltype>> result_copy = result;
-            while (!result_copy.empty()) {
-                result_vec.push_back(result_copy.top().second);
-                result_copy.pop();
-            }
-            // Copy ground truth priority queue to vector
-            std::priority_queue<std::pair<float, labeltype>> gt_copy = answers[i];
-            while (!gt_copy.empty()) {
-                gt_vec.push_back(gt_copy.top().second);
-                gt_copy.pop();
-            }
-            appr_alg.analyzePrunedCandidates(appr_alg, 8, result_vec, gt_vec);
-            if(i % 50 == 0) {
-                std::cerr << "processed query " << i << std::endl;
-            }
-        }
-
-        if (cluster_ids != nullptr && appr_alg.hasCentroids()) {
-            tableint entry_id = appr_alg.entry_id_;
-            unsigned entry_cluster_id = cluster_ids[entry_id];
-            const float* entry_centroid = appr_alg.getCentroid(entry_cluster_id);
-            size_t num_centroids = appr_alg.getNumCentroids();
-            size_t dim = appr_alg.getCentroidDim();
-
-            // Step 1: compute distance from entry_cluster to all other centroids
-            std::vector<std::pair<float, uint32_t>> cluster_distances;
-            for (size_t c = 0; c < num_centroids; ++c) {
-                float dist = appr_alg.fstdistfunc_(entry_centroid, appr_alg.getCentroid(c), appr_alg.dist_func_param_);
-                cluster_distances.emplace_back(dist, c);
-            }
-
-            // Step 2: sort cluster ids by distance to entry_cluster
-            std::sort(cluster_distances.begin(), cluster_distances.end());
-
-            // Step 3: build a rank map: cluster_id -> rank (0 = closest to entry cluster)
-            std::unordered_map<uint32_t, size_t> cluster_rank;
-            for (size_t i = 0; i < cluster_distances.size(); ++i) {
-                cluster_rank[cluster_distances[i].second] = i;
-            }
-
-            // Step 4: count how many gt labels fall into each cluster_rank
-            std::vector<int> rank_buckets(20, 0);  // assume 100 clusters max (adjust if needed)
-            std::priority_queue<std::pair<float, labeltype>> gt_copy = answers[i];
-            while (!gt_copy.empty()) {
-                labeltype gt_label = gt_copy.top().second;
-                gt_copy.pop();
-                uint32_t gt_cluster_id = cluster_ids[gt_label];
-                size_t rank = cluster_rank[gt_cluster_id];
-                if (rank < rank_buckets.size()) {
-                    rank_buckets[rank]++;
-                }
-            }
-
-            // Step 5: accumulate into global stats (per rank bucket)
-            for (size_t r = 0; r < rank_buckets.size(); ++r) {
-                adsampling::gt_cluster_rank_count[r] += rank_buckets[r];
-            }
-        }
-        
-
-        if(i == 5770 or i == 6710 or i == 7605 or i == 9825) {
-            // Calculate and display distances between query vector and nearest 20 clusters
-            if (cluster_ids != nullptr && appr_alg.hasCentroids()) {
-                std::cout << "Query " << i << " - Distances to nearest 20 clusters:" << std::endl;
-                
-                const float* entry_point_vector = (float*)appr_alg.getDataByInternalId(appr_alg.entry_id_);
-                size_t num_centroids = appr_alg.getNumCentroids();
-                
-                // Calculate distances from query vector to all centroids
-                std::vector<std::pair<float, uint32_t>> cluster_distances;
-                for (size_t c = 0; c < num_centroids; ++c) {
-                    const float* centroid = appr_alg.getCentroid(c);
-                    float dist = appr_alg.fstdistfunc_(entry_point_vector, centroid, appr_alg.dist_func_param_);
-                    cluster_distances.emplace_back(dist, c);
-                }
-                
-                // Sort clusters by distance (ascending)
-                std::sort(cluster_distances.begin(), cluster_distances.end());
-                
-                // Display the nearest 20 clusters (or fewer if there aren't 20)
-                size_t display_count = std::min(size_t(20), cluster_distances.size());
-                for (size_t j = 0; j < display_count; ++j) {
-                    std::cout << "Cluster #" << cluster_distances[j].second 
-                              << ": Distance = " << cluster_distances[j].first << std::endl;
-                }
-            }
-        }  
-
-        */
-        
-        /*
-        if (cluster_ids != nullptr && appr_alg.hasCentroids()) {
-            // query 的最近 centroid
-            auto& query_nearest_centroids = appr_alg.query_nearest_centroids_;
-            if (!query_nearest_centroids.empty()) {
-                const float* query_centroid = appr_alg.getCentroid(query_nearest_centroids[0]);
-                size_t num_centroids = appr_alg.getNumCentroids();
-                size_t dim = appr_alg.getCentroidDim();
-
-                // Step 1: compute distance from query's centroid to all centroids
-                std::vector<std::pair<float, uint32_t>> cluster_distances;
-                for (size_t c = 0; c < num_centroids; ++c) {
-                    float dist = appr_alg.fstdistfunc_(query_centroid, appr_alg.getCentroid(c), appr_alg.dist_func_param_);
-                    cluster_distances.emplace_back(dist, c);
-                }
-
-                // Step 2: sort clusters by distance
-                std::sort(cluster_distances.begin(), cluster_distances.end());
-
-                // Step 3: build a rank map
-                std::unordered_map<uint32_t, size_t> cluster_rank;
-                for (size_t i = 0; i < cluster_distances.size(); ++i) {
-                    cluster_rank[cluster_distances[i].second] = i;
-                }
-
-                // Step 4: count how many gt labels fall into each cluster_rank
-                std::vector<int> rank_buckets(20, 0);  // adjust if >100 clusters
-                std::priority_queue<std::pair<float, labeltype>> gt_copy = answers[i];
-                while (!gt_copy.empty()) {
-                    labeltype gt_label = gt_copy.top().second;
-                    gt_copy.pop();
-                    uint32_t gt_cluster_id = cluster_ids[gt_label];
-                    size_t rank = cluster_rank[gt_cluster_id];
-                    if (rank < rank_buckets.size()) {
-                        rank_buckets[rank]++;
-                    }
-                }
-
-                // Step 5: accumulate
-                for (size_t r = 0; r < rank_buckets.size(); ++r) {
-                    adsampling::gt_query_cluster_rank_count[r] += rank_buckets[r];
-                }
-            }
-        }
-        */
-
-        /*
-        if (cluster_ids != nullptr && appr_alg.hasCentroids()) {
-                const auto& pruned_vertices = appr_alg.pruned_vertices_;
-                if (!pruned_vertices.empty()) {
-                    // 用 entry_id 所在 cluster 排距离（你也可以改为 query_nearest_centroids_[0]）
-                    tableint entry_id = appr_alg.entry_id_;
-                    unsigned entry_cluster_id = cluster_ids[entry_id];
-                    const float* entry_centroid = appr_alg.getCentroid(entry_cluster_id);
-                    size_t num_centroids = appr_alg.getNumCentroids();
-                    size_t dim = appr_alg.getCentroidDim();
-
-                    // Step 1: compute distance from entry_cluster to all clusters
-                    std::vector<std::pair<float, uint32_t>> cluster_distances;
-                    for (size_t c = 0; c < num_centroids; ++c) {
-                        float dist = appr_alg.fstdistfunc_(entry_centroid, appr_alg.getCentroid(c), appr_alg.dist_func_param_);
-                        cluster_distances.emplace_back(dist, c);
-                    }
-
-                    std::sort(cluster_distances.begin(), cluster_distances.end());
-
-                    std::unordered_map<uint32_t, size_t> cluster_rank;
-                    for (size_t r = 0; r < cluster_distances.size(); ++r) {
-                        cluster_rank[cluster_distances[r].second] = r;
-                    }
-
-                    // 将 groundtruth 的 top-k id 存入 set，便于判断
-                    std::unordered_set<labeltype> gt_set;
-                    std::priority_queue<std::pair<float, labeltype>> gt_copy = answers[i];
-                    while (!gt_copy.empty()) {
-                        gt_set.insert(gt_copy.top().second);
-                        gt_copy.pop();
-                    }
-
-                    for (auto vid : pruned_vertices) {
-                        // 若被剪枝点也出现在 GT 中
-                        if (gt_set.find(vid) != gt_set.end()) {
-                            uint32_t cluster_id = cluster_ids[vid];
-                            size_t rank = cluster_rank[cluster_id];
-                            if (rank < num_centroids / 10) {
-                                adsampling::pruned_cluster_rank_count[rank]++;
-                            }
-                        }
-                    }
-                }
-            }
-        
-        std::unordered_set<labeltype> gt_set;
-        std::priority_queue<std::pair<float, labeltype>> gt_copy = answers[i];
-        while (!gt_copy.empty()) {
-            gt_set.insert(gt_copy.top().second);
-            gt_copy.pop();
-        }
-
-        // Step 1: query 的最近 centroid
-        uint32_t query_cluster_id = appr_alg.query_nearest_centroids_.empty() ? cluster_ids[appr_alg.entry_id_] : appr_alg.query_nearest_centroids_[0];
-        const float* query_centroid = appr_alg.getCentroid(query_cluster_id);
-
-        // Step 2: 排序所有 centroid 到 query 的距离
-        std::vector<std::pair<float, uint32_t>> cluster_distances;
-        for (size_t c = 0; c < appr_alg.getNumCentroids(); ++c) {
-            float dist = appr_alg.fstdistfunc_(query_centroid, appr_alg.getCentroid(c), appr_alg.dist_func_param_);
-            cluster_distances.emplace_back(dist, c);
-        }
-        std::sort(cluster_distances.begin(), cluster_distances.end());
-        std::unordered_map<uint32_t, size_t> cluster_rank;
-        for (size_t r = 0; r < cluster_distances.size(); ++r) {
-            cluster_rank[cluster_distances[r].second] = r;
-        }
-
-        // Step 3: 遍历 pruned ∩ GT
-        for (auto vid : appr_alg.pruned_vertices_) {
-            if (gt_set.find(vid) != gt_set.end()) {
-                const std::vector<uint32_t>& flags = appr_alg.cluster_flags_[vid];
-                if (!flags.empty()) {
-                    // 找出 flags 中距离 query 最近的 cluster
-                    size_t min_rank = cluster_rank.size();
-                    for (auto cid : flags) {
-                        if (cluster_rank.find(cid) != cluster_rank.end()) {
-                            min_rank = std::min(min_rank, cluster_rank[cid]);
-                        }
-                    }
-                    if (min_rank < 20) {
-                        adsampling::pruned_in_gt_flag_rank_count[min_rank]++;
-                    }
-                }
-            }
-        }
-
-        */
-
         std::priority_queue<std::pair<float, labeltype >> gt(answers[i]);
         total += gt.size();
-        int tmp = recall(result, gt);
+
+        int gt_rank = 9999;
+        while (!gt.empty() && gt_rank >= 0) {
+            labeltype gt_id = gt.top().second;
+            gt.pop();
+
+            // If this gt point was visited during search
+            auto hop_it = adsampling::visited_hop.find(gt_id);
+            if (hop_it != adsampling::visited_hop.end() && hop_it->second < 99) {
+                hop_sums[gt_rank] += hop_it->second;
+                hop_counts[gt_rank]++;
+            }
+            gt_rank --;
+        }
+
+        std::priority_queue<std::pair<float, labeltype >> gt2(answers[i]);
+        int tmp = recall(result, gt2);
         correct += tmp;
+    }
+
+    // Print average hops for each rank
+    std::ofstream hop_stats("sift_hop_stats.txt");
+    if (hop_stats.is_open()) {
+        for (int rank = 0; rank < 10000; rank++) {
+            if (hop_counts[rank] > 0) {
+                float avg_hop = (float)hop_sums[rank] / hop_counts[rank];
+                hop_stats << rank << "\t" << avg_hop << endl;
+            }
+        }
+        hop_stats.close();
+    } else {
+        cerr << "Failed to open hop_stats.txt for writing" << endl;
     }
 
     long double time_us_per_query = total_time / qsize + rotation_time;
@@ -518,11 +237,12 @@ int main(int argc, char * argv[]) {
     char centroid_path[256] = "";
     char cluster_ids_path[256] = "";
     int randomize = 0;
-
+    char topk_clusters_path[256] = "";
+    int topk_clusters = 0;
     int subk=10000;
 
     while(iarg != -1){
-        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:f:c:l:", longopts, &ind);
+        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:f:c:l:b:h:", longopts, &ind);
         switch (iarg){
             case 'd':
                 if(optarg)randomize = atoi(optarg);
@@ -563,6 +283,12 @@ int main(int argc, char * argv[]) {
             case 'l':
                 if(optarg)strcpy(cluster_ids_path, optarg);
                 break;
+            case 'b':
+                if(optarg)strcpy(topk_clusters_path, optarg);
+                break;
+            case 'h':
+                if(optarg)topk_clusters = atoi(optarg);
+                break;
         }
     }   
 
@@ -570,7 +296,10 @@ int main(int argc, char * argv[]) {
     Matrix<float> Q(query_path);
     Matrix<unsigned> L(cluster_ids_path);
 
-    freopen(result_path,"a",stdout);
+    if(freopen(result_path,"a",stdout) == NULL){
+        cout << "Failed to open result file" << endl;
+    }
+    
     if(randomize){
         Matrix<float> P(transformation_path);
         StopW stopw = StopW();
@@ -587,6 +316,10 @@ int main(int argc, char * argv[]) {
     // Load flags if provided
     if (flags_path != "") {
         appr_alg->loadFlags(flags_path);
+    }
+
+    if (topk_clusters_path != "") {
+        appr_alg->loadTopkClusters(topk_clusters_path, topk_clusters);
     }
 
     size_t k = G.d;
@@ -638,7 +371,6 @@ int main(int argc, char * argv[]) {
         }
     }
     */
-
 
     return 0;
 }

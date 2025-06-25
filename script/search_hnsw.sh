@@ -6,10 +6,11 @@ ef=500
 M=32
 datasets=('sift')
 adaptive=0
+topk_clusters=64
 
 for data in "${datasets[@]}"
 do  
-    for K in 64
+    for K in 1024
     do
 
         if [ $adaptive -ne 0 ];then
@@ -45,9 +46,10 @@ do
         flags_file="${index_path}/${data}_ef${ef}_M${M}_arcflags${K}_dep${depth}.index"
         centroid_file="${data_path}/${data}_centroid_${K}.fvecs"
         cluster_ids_file="${data_path}/${data}_cluster_id_${K}.ivecs" 
+        clusters_file="${data_path}/${data}_top_clusters_${K}.ivecs"
 
         # sudo perf stat -e branch-misses,branch-instructions  
         # sudo perf record -F 8000 
-        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -f ${flags_file} -c ${centroid_file} -l ${cluster_ids_file}
+        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -f ${flags_file} -c ${centroid_file} -l ${cluster_ids_file} -b ${clusters_file} -h ${topk_clusters}
     done
 done

@@ -11,7 +11,7 @@ Note that in the whole algorithm we do not calculate the square root of the dist
 #include <queue>
 #include <vector>
 #include <iostream>
-
+#include <map>
 using namespace std;
 
 namespace adsampling {
@@ -45,7 +45,10 @@ int pruned_cluster_rank_count[200] = {0}; // rank 0 = same cluster as query
 
 int pruned_in_gt_flag_rank_count[100] = {0};  // rank bucket
 
+std::map<unsigned int, int> visited_hop;
+
 void clear() {
+    dist_cnt = 0;
     distance_time = 0;
     tot_dimension = 0;
     all_dimension = 0;
@@ -80,6 +83,8 @@ void clear() {
     for (int i = 0; i < 100; i++) {
         pruned_in_gt_flag_rank_count[i] = 0;
     }
+
+    visited_hop.clear();
 }
 
 // The hypothesis testing checks whether \sqrt{D/d} dis' > (1 +  epsilon0 / \sqrt{d}) * r.

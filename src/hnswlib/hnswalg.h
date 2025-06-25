@@ -317,9 +317,40 @@ namespace hnswlib {
 
             entry_id_ = ep_id;
             pruned_vertices_.clear();
-
             entry_ids_.push_back(ep_id);
 
+            // std::vector<uint32_t> nearest_centroids;
+            // std::vector<uint32_t> query_bitmasks;
+            // if (has_centroids_ && !cluster_flags_.empty()) {
+            //     // Calculate all distances first
+            //     std::vector<std::pair<dist_t, uint32_t>> centroid_distances;
+            //     centroid_distances.reserve(num_centroids_);
+                
+            //     // Calculate distance to each centroid
+            //     for (size_t i = 0; i < num_centroids_; i++) {
+            //         dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
+            //         adsampling::tot_full_dist++;
+            //         centroid_distances.emplace_back(dist, i);
+            //     }
+                
+            //     // Sort all distances
+            //     std::partial_sort(centroid_distances.begin(), 
+            //                     centroid_distances.begin() + std::min(topk_clusters_, centroid_distances.size()),
+            //                     centroid_distances.end());
+                
+            //     // Take topk_clusters_ nearest centroids and set bitmask
+            //     query_bitmasks.resize(cluster_flag_width_, 0);
+            //     for (size_t i = 0; i < std::min(topk_clusters_, centroid_distances.size()); i++) {
+            //         uint32_t centroid_id = centroid_distances[i].second;
+                    
+            //         // Set bit in bitmask
+            //         size_t word = centroid_id / 32;
+            //         size_t bit = centroid_id % 32;
+            //         query_bitmasks[word] |= (1U << bit);
+            //     }
+            // }
+
+            /*
             // Find the nearest centroids to the query point
             std::vector<uint32_t> nearest_centroids;
             if (has_centroids_ && !cluster_flags_.empty()) {
@@ -349,7 +380,8 @@ namespace hnswlib {
                 
                 query_nearest_centroids_ = nearest_centroids;
             }
-
+            */
+            
             // top_candidates - the result set R
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
             // candidate_set  - the search set S
@@ -379,6 +411,9 @@ namespace hnswlib {
             visited_array[ep_id] = visited_array_tag;
             int cnt_visit = 0;
 
+            std::map<tableint, int> hops;
+            hops[ep_id] = 0;
+
             // Iteratively generate candidates and conduct DCOs to maintain the result set R.
             while (!candidate_set.empty()) {
                 std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
@@ -388,6 +423,27 @@ namespace hnswlib {
                     break;
                 }
                 candidate_set.pop();
+
+                int hop = hops[current_node_pair.second];
+
+                // if (cnt_visit > 10000 && !topk_cluster_flags_.empty()) {
+                //     tableint candidate_id = current_node_pair.second;
+                //     int collision_count = 0;
+                //     for (size_t w = 0; w < cluster_flag_width_; w++) {
+                //         uint32_t overlap = query_bitmasks[w] & topk_cluster_flags_[candidate_id][w];
+                //         collision_count += __builtin_popcount(overlap);
+                //     }
+                    
+                //     if ((float)collision_count / topk_clusters_ < 0.5) {
+                //         adsampling::pruned_by_flags++;
+                //         pruned_vertices_.push_back(candidate_id);
+                //         continue;
+                //     }
+                // }
+
+                // if(hop > 1) {
+                //     continue;
+                // }
 
                 // Fetch the smallest object in S. 
                 tableint current_node_id = current_node_pair.second;
@@ -400,17 +456,33 @@ namespace hnswlib {
                     if (!(visited_array[candidate_id] == visited_array_tag)) {
                         cnt_visit++;
                         visited_array[candidate_id] = visited_array_tag;
-
+                        hops[candidate_id] = hop + 1;
+                        adsampling::visited_hop[candidate_id] = hop + 1;
                         // Apply pruning if we have nearest centroids and cluster flags
-                        bool prune_candidate = false;
-                        if (!nearest_centroids.empty() && !cluster_flags_.empty()) {
-                            prune_candidate = check_prune(cluster_flags_, candidate_id, nearest_centroids);
-                            if (prune_candidate) {
-                                adsampling::pruned_by_flags++;
-                                pruned_vertices_.push_back(candidate_id);
-                                continue;
-                            }
-                        }
+                        // bool prune_candidate = false;
+                        // if (!nearest_centroids.empty() && !cluster_flags_.empty()) {
+                        //     prune_candidate = check_prune(cluster_flags_, candidate_id, nearest_centroids);
+                        //     if (prune_candidate) {
+                        //         adsampling::pruned_by_flags++;
+                        //         pruned_vertices_.push_back(candidate_id);
+                        //         continue;
+                        //     }
+                        // }
+
+                        // Check bit collision count between query and candidate's top-k cluster flags
+                        // if (cnt_visit > 20000 && !topk_cluster_flags_.empty()) {
+                        //     int collision_count = 0;
+                        //     for (size_t w = 0; w < cluster_flag_width_; w++) {
+                        //         uint32_t overlap = query_bitmasks[w] & topk_cluster_flags_[candidate_id][w];
+                        //         collision_count += __builtin_popcount(overlap);
+                        //     }
+                            
+                        //     if ((float)collision_count / topk_clusters_ < 0.4) {
+                        //         adsampling::pruned_by_flags++;
+                        //         pruned_vertices_.push_back(candidate_id);
+                        //         continue;
+                        //     }
+                        // }
 
                         // Conduct DCO with FDScanning wrt the N_ef th NN: 
                         // (1) calculate its exact distance 
@@ -1974,6 +2046,62 @@ namespace hnswlib {
                 adsampling::hit_by_pruned[h] += hop_hit_count[h];
             }
         }
+
+        void loadTopkClusters(const std::string &filename, int topk) {
+            topk_clusters_ = (size_t)topk;
+
+            std::ifstream input(filename, std::ios::binary);
+            if (!input.is_open()) {
+                throw std::runtime_error("Cannot open topk clusters file for reading: " + filename);
+            }
+
+            int num_clusters = num_centroids_;
+            size_t vec_index = 0;
+
+            cluster_flag_width_ = (num_clusters + 31) / 32;
+            topk_cluster_flags_.resize(cur_element_count, std::vector<uint32_t>(cluster_flag_width_, 0));
+
+            while (input.read(reinterpret_cast<char*>(&num_clusters), sizeof(int))) {
+                if (num_clusters <= 0) {
+                    throw std::runtime_error("Invalid number of clusters in topk cluster file");
+                }
+
+                if (vec_index >= cur_element_count) {
+                    throw std::runtime_error("Top-k cluster file has more entries than base vectors");
+                }
+
+                std::vector<int> cluster_ids(num_clusters);
+                input.read(reinterpret_cast<char*>(cluster_ids.data()), sizeof(int) * num_clusters);
+
+                // Only take the first topk clusters
+                size_t clusters_to_process = std::min((size_t)topk, (size_t)num_clusters);
+                
+                // Map only the nearest topk cluster_ids to bitmask
+                for (size_t i = 0; i < clusters_to_process; i++) {
+                    int cluster_id = cluster_ids[i];
+                    if (cluster_id < 0 || cluster_id >= num_clusters) {
+                        throw std::runtime_error("Cluster ID out of range");
+                    }
+                    size_t word = cluster_id / 32;
+                    size_t bit = cluster_id % 32;
+                    topk_cluster_flags_[vec_index][word] |= (1U << bit);
+                }
+
+                vec_index++;
+            }
+
+            if (vec_index != cur_element_count) {
+                std::cerr << "Warning: topk cluster file has " << vec_index 
+                        << " entries, but index has " << cur_element_count << " base vectors." << std::endl;
+            }
+
+            input.close();
+        }
+
+
+        mutable std::vector<std::vector<uint32_t>> topk_cluster_flags_;
+        mutable size_t cluster_flag_width_ = 0;
+        mutable size_t topk_clusters_ = 0;
 
         mutable tableint entry_id_ = 0;
         mutable std::vector<uint32_t> query_nearest_centroids_;

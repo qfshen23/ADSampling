@@ -1,7 +1,7 @@
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
 #define COUNT_DIMENSION
-#define PLOT_DISK_K
+// #define PLOT_DISK_K
 // #define COUNT_DIST_TIME
 
 #include <iostream>
@@ -34,6 +34,13 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     // nprobes.push_back(80);
     // nprobes.push_back(100);
     nprobes.push_back(200);
+    nprobes.push_back(240);
+    nprobes.push_back(280);
+    nprobes.push_back(320);
+    nprobes.push_back(360);
+    nprobes.push_back(400);
+    nprobes.push_back(440);
+    nprobes.push_back(480);
 
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
@@ -91,6 +98,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         // cout << "average count of exact distance vectors: " << adsampling::cntt / Q.n << endl;
         // cout << "average count of exact srq_dist calls: " << adsampling::dist_cnt / Q.n << endl;
         cout << "pruned rate: " << 1 - (adsampling::tot_dimension + (double)0.0) / adsampling::all_dimension << endl;
+        cout << "total distance calculation: " << adsampling::dist_cnt << endl;
     }
 #ifdef PLOT_DISK_K
     fout.close();
@@ -131,7 +139,7 @@ int main(int argc, char * argv[]) {
     char transformation_path[256] = "";
 
     int randomize = 0;
-    int subk = 100;
+    int subk = 10000;
 
     while(iarg != -1) {
         iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:a:", longopts, &ind);
@@ -175,7 +183,10 @@ int main(int argc, char * argv[]) {
     Matrix<float> Q(query_path);
     Matrix<unsigned> G(groundtruth_path);
     
-    freopen(result_path, "a", stdout);
+    if(freopen(result_path, "a", stdout) == NULL) {
+        std::cerr << "Error: cannot open file " << result_path << std::endl;
+        exit(1);
+    }
 
     if(randomize) {
         Matrix<float> P(transformation_path);

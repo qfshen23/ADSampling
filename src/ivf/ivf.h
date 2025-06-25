@@ -350,6 +350,7 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
         StopW stopw = StopW();
 #endif
         centroid_dist[i].first = sqr_dist(query, centroids + i * D, D);
+        adsampling::dist_cnt++;
 #ifdef COUNT_DIST_TIME
         adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif               
@@ -364,6 +365,8 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     size_t ncan = 0;
     for(int i=0;i<nprobe;i++)
         ncan += len[centroid_dist[i].second];
+
+    adsampling::dist_cnt += 1ll * ncan;
     
     adsampling::all_dimension += 1ll * ncan * D;
 
