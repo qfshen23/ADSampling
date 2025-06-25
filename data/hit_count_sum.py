@@ -30,11 +30,11 @@ def read_ivecs(filename):
     iv = iv[:, 1:]
     return iv
     
-K = 64
+K = 1024
 datasets = ['sift']
 data_path = '/data/vector_datasets'
-top_k_clusters = 16
-k_values = [100, 1000, 10000]  # k nearest neighbors to consider (out of 10000 available)
+top_k_clusters = 100
+k_values = [1, 10, 50]  # k nearest neighbors to consider (out of 10000 available)
 
 for dataset in datasets:
     dataset_path = os.path.join(data_path, dataset)
@@ -105,7 +105,7 @@ for dataset in datasets:
         ax1.set_xlabel('Top-kth Clusters')
         ax1.set_ylabel('Average Hit Count', color='skyblue')
         ax1.tick_params(axis='y', labelcolor='skyblue')
-        ax1.set_xticks(range(1, top_k_clusters + 1, 1))
+        ax1.set_xticks(range(1, top_k_clusters + 1, 10))
         ax1.grid(axis='y', linestyle='--', alpha=0.7)
 
         # Plot cumulative line on second y-axis
