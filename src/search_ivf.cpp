@@ -1,6 +1,6 @@
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
-#define COUNT_DIMENSION
+// #define COUNT_DIMENSION
 // #define PLOT_DISK_K
 // #define COUNT_DIST_TIME
 
@@ -29,7 +29,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
 
     vector<int> nprobes;
     // nprobes.push_back(10);
-    nprobes.push_back(35);
+    nprobes.push_back(45);
     // nprobes.push_back(50);
     // nprobes.push_back(80);
     // nprobes.push_back(100);

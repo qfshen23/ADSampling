@@ -5,10 +5,10 @@ g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/incl
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results
-datasets=('sift')
+datasets=('gist')
 C=1024
 K=100
-refine_num=20000
+refine_num=30000
 k_overlap=64
 
 for data in "${datasets[@]}"
@@ -29,7 +29,7 @@ do
 
         clusters_file="${path}/${data}/${data}_top_clusters_${C}.ivecs"
 
-        > "$diskK"
+        echo "clusters_file: ${clusters_file}"
 
         ./src/search_ivf -d ${randomize} -n ${data} -i ${index} -q ${query} -g ${gnd} -r ${res} -t ${trans} -k ${K} -a ${diskK} -o ${k_overlap} -c ${refine_num} -b ${clusters_file}
  
