@@ -1,14 +1,13 @@
-
 cd ..
 g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/include/eigen3 -fopenmp
 
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results
-datasets=('gist')
+datasets=('sift')
 C=1024
 K=100
-refine_num=70000
+refine_num=2800
 k_overlap=64
 
 for data in "${datasets[@]}"

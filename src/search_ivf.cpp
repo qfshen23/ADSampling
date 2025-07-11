@@ -29,7 +29,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
 
     vector<int> nprobes;
     // nprobes.push_back(10);
-    nprobes.push_back(95);
+    nprobes.push_back(25);
     // nprobes.push_back(50);
     // nprobes.push_back(80);
     // nprobes.push_back(100);
