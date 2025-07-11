@@ -5,8 +5,8 @@ g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/incl
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results 
-datasets=('sift')
-C=1024
+datasets=('tiny5m')
+C=2048
 K=100
 prop=25
 
