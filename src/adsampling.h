@@ -140,6 +140,7 @@ float dist_comp(const float& dis, const void *data, const void *query,
 
 };
 
+__attribute__((optimize("no-tree-vectorize")))
 float sqr_dist(float* a, float* b, int D){
     float ret = 0;
     for(int i=0;i!=D;i++){

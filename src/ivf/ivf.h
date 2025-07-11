@@ -174,13 +174,8 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) 
         }
     }
 
-    // ------------------------------
-    //  5) 拷贝聚类中心
-    // ------------------------------
     std::memcpy(centroids, _centroids.data, C * D * sizeof(float));
 
-    // 不要忘了释放 thread_temp 原来的内存（vector 的自动清理也可以）
-    // 如果你要继续使用 temp，就不要释放
     temp.clear();
 }
 
@@ -443,7 +438,6 @@ ResultHeap IVF::search(
         KNNs.emplace(dist_candidates[i].first, dist_candidates[i].second);
     }
 
-    // 清理资源
     delete[] centroid_dist;
     delete[] query_bitmasks;
     delete[] overlap_ratios;
