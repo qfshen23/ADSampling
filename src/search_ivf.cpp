@@ -28,11 +28,30 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     struct rusage run_start, run_end;
 
     vector<int> nprobes;
-    // nprobes.push_back(15);
-    // nprobes.push_back(20);
-    // nprobes.push_back(25);
-    // nprobes.push_back(30);
-    // nprobes.push_back(35);
+    nprobes.push_back(4);
+    nprobes.push_back(6);
+    nprobes.push_back(8);
+    nprobes.push_back(10);
+    nprobes.push_back(12);
+    nprobes.push_back(14);
+    nprobes.push_back(16);
+    nprobes.push_back(18);
+    nprobes.push_back(20);
+    nprobes.push_back(22);
+    nprobes.push_back(24);
+    nprobes.push_back(26);
+    nprobes.push_back(28);
+    nprobes.push_back(30);
+    nprobes.push_back(32);
+    nprobes.push_back(34);
+    nprobes.push_back(36);
+    nprobes.push_back(38);
+    nprobes.push_back(40);
+    nprobes.push_back(42);
+    nprobes.push_back(44);
+    nprobes.push_back(46);
+    nprobes.push_back(48);
+    nprobes.push_back(50);
     // nprobes.push_back(40);
     // nprobes.push_back(45);
     // nprobes.push_back(50);
@@ -46,13 +65,8 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     // nprobes.push_back(90);
     // nprobes.push_back(95);
     // nprobes.push_back(100);
-    nprobes.push_back(105);
-    nprobes.push_back(110);
-    
-    // nprobes.push_back(50);
-    // nprobes.push_back(80);
-    // nprobes.push_back(100);
-    // nprobes.push_back(35);
+    // nprobes.push_back(105);
+    // nprobes.push_back(110);
 
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);

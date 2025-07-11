@@ -5,7 +5,7 @@ g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/incl
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results 
-datasets=('gist')
+datasets=('sift')
 C=1024
 K=100
 prop=25
@@ -14,16 +14,6 @@ for data in "${datasets[@]}"
 do
     for randomize in {0..2} # 0 - IVF, 1 - IVF++, 2 - IVF+
     do
-        if [ $randomize == "0" ]
-        then 
-            echo "IVF"
-        elif [ $randomize == "2" ]
-        then 
-            echo "IVF+"
-        else    
-            echo "IVF++"
-        fi
-
         if [ $randomize -ne 0 ];then
             echo "Skipping adaptive=${randomize} for dataset ${data}"
             continue
