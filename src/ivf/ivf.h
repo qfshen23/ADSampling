@@ -335,12 +335,6 @@ IVF::~IVF(){
 }
 
 ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const{
-    // unsigned int seed = 123456;
-    // std::mt19937 rng(seed);
-    // random_device rd;
-    // std::mt19937 rng(rd());
-    // std::uniform_real_distribution<float> random_dist(0.0, 1.0);
-    // the default value of distK is +inf 
     Result* centroid_dist = new Result [C];
 
     StopW stopw = StopW();
@@ -373,41 +367,10 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     float * dist = new float [ncan];
     Result * candidates = new Result [ncan];
     int * obj= new int [ncan];
-    // bool * flag = new bool [ncan];
     
     size_t cur = 0;
-    // for(int i=0;i<nprobe;i++){
-    //     int cluster_id = centroid_dist[i].second;
-    //     for(int j=0;j<len[cluster_id];j++){
-    //         float r = random_dist(rng);
-    //         flag[cur] = (r <= 0.75);
-    //         cur ++;
-    //     }    
-    // }
-
-    // std::vector<size_t> cand;
-    // cand.reserve(ncan);
-    // for (size_t i = 0; i < nprobe; i++) {
-    //     int cluster_id = centroid_dist[i].second;
-    //     for (size_t j = 0; j < len[cluster_id]; j++) {
-    //         cand.push_back(start[cluster_id] + j);
-    //     }
-    // }
-
-    // std::random_device rd;
-    // std::mt19937 g(rd());
-    // std::shuffle(cand.begin(), cand.end(), g);
 
     stopw = StopW();
-
-    // size_t tmp_size = (size_t)(cand.size() * 0.75);
-    // for (size_t i = 0; i < tmp_size; i++) {
-    //     size_t can = cand[i];
-    //     float tmp_dist = sqr_dist(query, L1_data + can * d, d);
-    //     candidates[i].first = tmp_dist;
-    //     candidates[i].second = id[can];
-    // }
-
 
     // Scan a few initial dimensions and store the distances.
     // For IVF (i.e., apply FDScanning), it should be D. 
@@ -416,18 +379,7 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     cur = -1;
     for(int i=0;i<nprobe;i++){
         int cluster_id = centroid_dist[i].second;
-        for(int j=0;j<len[cluster_id];j++){
-             
-            // float r = random_dist(rng);
-            // bool not_process = r > 0.5;
-            // // 
-            // if(not_process) {
-            //     continue;
-            // }
-
-            // float r = random_dist(rng);
-            // // flag[cur] = (r <= 0.75);
-            // if(r >= 0.75) continue;
+        for(int j=0;j<len[cluster_id];j++) {
 
             cur++;
 

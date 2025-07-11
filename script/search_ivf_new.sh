@@ -4,10 +4,9 @@ g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/incl
 
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
-result_path=./results
-# datasets=('sift')   
-datasets=('gist' 'deep1M')
-C=4096
+result_path=./results 
+datasets=('sift')
+C=1024
 K=100
 prop=25
 
@@ -25,7 +24,7 @@ do
             echo "IVF++"
         fi
 
-        if [ $randomize -ne 2 ];then
+        if [ $randomize -ne 0 ];then
             echo "Skipping adaptive=${randomize} for dataset ${data}"
             continue
         fi

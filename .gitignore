@@ -2,3 +2,5 @@ results/
 venv/
 .vscode/
 penmp
+*.txt
+data/*.bin
