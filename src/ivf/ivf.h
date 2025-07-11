@@ -317,7 +317,7 @@ ResultHeap IVF::search(
     size_t k_overlap, 
     size_t refine_num
 ) const {
-    StopW stopw;
+    //StopW stopw;
     Result* centroid_dist = new Result[C];
     for(int i = 0; i < C; i++) {
         centroid_dist[i].first = sqr_dist(query, centroids + i * D, D);
@@ -325,7 +325,7 @@ ResultHeap IVF::search(
     }
     adsampling::dist_cnt += C;
     std::partial_sort(centroid_dist, centroid_dist + nprobe, centroid_dist + C);
-    adsampling::time1 += stopw.getElapsedTimeMicro();
+    //adsampling::time1 += stopw.getElapsedTimeMicro();
 
     size_t num_words = (C + 63) / 64;
     uint64_t* query_bitmasks = new uint64_t[num_words]();
@@ -344,7 +344,7 @@ ResultHeap IVF::search(
     
     size_t cur = 0;
 
-    StopW stopw2;
+    //StopW stopw2;
     
     for(int pi = 0; pi < nprobe; ++pi) {
         int cluster_id = centroid_dist[pi].second;
@@ -380,7 +380,7 @@ ResultHeap IVF::search(
         }
     }
 
-    adsampling::time2 += stopw2.getElapsedTimeMicro();
+    //adsampling::time2 += stopw2.getElapsedTimeMicro();
 
     const int MAX_OVERLAP = 64;
     int bucket[MAX_OVERLAP + 1] = {0};
@@ -398,7 +398,7 @@ ResultHeap IVF::search(
         }
     }
 
-    StopW stopw3;
+    //StopW stopw3;
     Result* dist_candidates = new Result[ncan];
     cur = 0;
     size_t selected_count = 0;
@@ -416,7 +416,7 @@ ResultHeap IVF::search(
             }
         }
     }
-    adsampling::time3 += stopw3.getElapsedTimeMicro();
+    //adsampling::time3 += stopw3.getElapsedTimeMicro();
     /*
     bool* is_selected = new bool[ncan];
     cur = 0;
@@ -450,7 +450,7 @@ ResultHeap IVF::search(
     adsampling::time3 += stopw3.getElapsedTimeMicro();
     */
 
-    StopW stopw4;
+    //StopW stopw4;
     
     adsampling::dist_cnt += selected_count;
 
@@ -460,7 +460,7 @@ ResultHeap IVF::search(
         dist_candidates + selected_count
     );
 
-    adsampling::time4 += stopw4.getElapsedTimeMicro();
+    //adsampling::time4 += stopw4.getElapsedTimeMicro();
 
     ResultHeap KNNs;
     for(size_t i = 0; i < k; i++) {

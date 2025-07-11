@@ -8,7 +8,7 @@ result_path=./results
 datasets=('gist')
 C=1024
 K=100
-refine_num=30000
+refine_num=70000
 k_overlap=64
 
 for data in "${datasets[@]}"
