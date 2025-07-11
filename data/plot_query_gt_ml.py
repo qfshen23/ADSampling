@@ -87,9 +87,9 @@ def build_training_samples(
             sample_base_clusters.append(top_clusters[vid][:k_overlap])
             sample_labels.append(0.0)
     return (
-        torch.LongTensor(sample_query_clusters),
-        torch.LongTensor(sample_base_clusters),
-        torch.FloatTensor(sample_labels)
+        torch.LongTensor(np.array(sample_query_clusters)),
+        torch.LongTensor(np.array(sample_base_clusters)),
+        torch.FloatTensor(np.array(sample_labels))
     )
 
 # ========== 模型 ==========

@@ -66,11 +66,11 @@ def compute_recall_by_overlap(probe_vector_ids, overlap_ratios, gt_vector_ids, t
 
 def main():
     datasets = ['sift']  # List of datasets to process
-    K = 1024  # Number of clusters
+    K = 1024 * 16  # Number of clusters
     k_overlap = 64  # Top-k clusters for overlap computation
-    nprobe = 120  # Number of nearest clusters to probe
-    top_x_values = [20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000]  # Different x values for recall computation
-    gt_neighbors = 10000  # Number of ground truth neighbors to consider
+    nprobe = 80  # Number of nearest clusters to probe
+    top_x_values = [500, 1000, 2000, 3000, 4000]  # Different x values for recall computation
+    gt_neighbors = 10  # Number of ground truth neighbors to consider
 
     for dataset in datasets:
         print(f"\n=== Processing dataset: {dataset} ===")
@@ -80,7 +80,7 @@ def main():
         query_path = f'{base_path}/{dataset}_query.fvecs'
         gt_path = f'{base_path}/{dataset}_groundtruth_10000.ivecs'
         centroids_path = f'{base_path}/{dataset}_centroid_{K}.fvecs'
-        top_clusters_path = f'{base_path}/{dataset}_top_clusters_{K}.ivecs'
+        top_clusters_path = f'{base_path}/{dataset}_top_clusters_1024_of_{K}.ivecs'
         cluster_ids_path = f'{base_path}/{dataset}_cluster_id_{K}.ivecs'
         
         # Skip if files don't exist
@@ -108,7 +108,7 @@ def main():
         recall_results = {x: [] for x in top_x_values}
         
         print("\nComputing query-probe vector overlaps...")
-        for query_idx in tqdm(range(min(10000, num_queries))):  # Process first 100 queries
+        for query_idx in tqdm(range(min(1000, num_queries))):  # Process first 100 queries
             query = queries[query_idx:query_idx+1]
             
             # Compute distances from query to all centroids
@@ -154,7 +154,7 @@ def main():
             #           f"min={gt_stats['min']:.4f}, p25={gt_stats['p25']:.4f}, "
             #           f"mean={gt_stats['mean']:.4f}, p75={gt_stats['p75']:.4f}, max={gt_stats['max']:.4f}")
             
-            # Compute recall by overlap ratio for differ64ent top-x values
+            # Compute recall by overlap ratio for different top-x values
             if overlap_ratios and len(probe_vector_ids) > 0:
                 print(f"Query {query_idx} - Recall by overlap (top-x most similar by overlap):")
                 for top_x in top_x_values:

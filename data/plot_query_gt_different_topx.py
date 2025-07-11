@@ -43,22 +43,12 @@ def compute_recall(candidate_ids, gt_vector_ids):
 
 def main():
     datasets = ['sift']
-    K = 1024
-    nprobe = 120
+    K = 1024 * 16
+    nprobe = 150
     nprobe_segments = [
-        (0, 10, 0.9, 64),
-        (10, 20, 0.85, 64),
-        (20, 30, 0.8, 64),
-        (30, 40, 0.75, 64),
-        (40, 50, 0.7, 64),
-        (60, 70, 0.65, 64),
-        (70, 80, 0.4, 64),
-        (80, 90, 0.35, 64),
-        (90, 100, 0.3, 64),
-        (100, 110, 0.25, 64),
-        (110, 120, 0.2, 64),
+        (120, 150, 0.2, 32),
     ]
-    gt_neighbors = 10000
+    gt_neighbors = 100
 
     for dataset in datasets:
         print(f"\n=== Processing dataset: {dataset} ===")
@@ -66,7 +56,7 @@ def main():
         query_path = f'{base_path}/{dataset}_query.fvecs'
         gt_path = f'{base_path}/{dataset}_groundtruth_10000.ivecs'
         centroids_path = f'{base_path}/{dataset}_centroid_{K}.fvecs'
-        top_clusters_path = f'{base_path}/{dataset}_top_clusters_{K}.ivecs'
+        top_clusters_path = f'{base_path}/{dataset}_top_clusters_1024_of_{K}.ivecs' # f'{base_path}/{dataset}_top_clusters_{K}.ivecs'
         cluster_ids_path = f'{base_path}/{dataset}_cluster_id_{K}.ivecs'
         missing_files = [p for p in [query_path, gt_path, centroids_path, top_clusters_path, cluster_ids_path] if not os.path.exists(p)]
         if missing_files:
@@ -86,6 +76,8 @@ def main():
         segment_recalls = [[] for _ in range(num_segments)]
         query_segment_recalls = []
         segment_gt_counts = [[] for _ in range(num_segments)]
+        total_vectors = 0  # Total vectors in nprobe clusters across all queries
+        total_candidates = 0  # Total selected candidates across all queries
 
         print("\nSegmented nprobe, per-segment candidate selection ...")
         for query_idx in tqdm(range(min(1000, num_queries))):
@@ -94,6 +86,11 @@ def main():
             nearest_clusters = np.argsort(distances)[:nprobe]
             query_top_clusters = np.argsort(distances)
             gt_vector_ids = set(groundtruth[query_idx])
+
+            # Count vectors in nprobe clusters
+            for cluster_id in nearest_clusters:
+                vectors_in_cluster = np.where(cluster_ids.flatten() == cluster_id)[0]
+                total_vectors += len(vectors_in_cluster)
 
             segment_candidates = []
             query_recalls = []
@@ -132,6 +129,7 @@ def main():
                 segment_recalls[seg_idx].append(seg_recall)
                 query_recalls.append(seg_recall)
 
+            total_candidates += len(segment_candidates)
             query_segment_recalls.append(query_recalls)
             recall = compute_recall(segment_candidates, gt_vector_ids)
             recall_results.append(recall)
@@ -141,6 +139,9 @@ def main():
             print(f"  Average recall up to now: {np.mean(recall_results):.4f}")
 
         print(f"\nAverage recall over {len(recall_results)} queries for {dataset}: {np.mean(recall_results):.4f}")
+        print(f"Total vectors in nprobe clusters: {total_vectors}")
+        print(f"Total candidates selected: {total_candidates}")
+        print(f"Pruning ratio: {total_candidates / total_vectors:.2f}")
         for seg_idx, (_, _, seg_percent, k_overlap) in enumerate(nprobe_segments):
             avg_seg_recall = np.mean(segment_recalls[seg_idx])
             avg_seg_gts = np.mean(segment_gt_counts[seg_idx])

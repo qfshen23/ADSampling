@@ -63,7 +63,7 @@ if __name__ == '__main__':
     # Parameters
     source = '/data/vector_datasets/'
     datasets = ['sift']
-    K = 4096  # Total number of clusters
+    K = 16 * 1024  # Total number of clusters
     batch_size = 2000
     k = 1024  # Number of top clusters to keep
 

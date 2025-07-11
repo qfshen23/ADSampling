@@ -23,24 +23,24 @@ long double rotation_time=0;
 
 char diskK_path[256] = "";
 
-void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int k){
+void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int k, int k_overlap, int refine_num){
     float sys_t, usr_t, usr_t_sum = 0, total_time=0, search_time=0;
     struct rusage run_start, run_end;
 
     vector<int> nprobes;
     // nprobes.push_back(10);
-    // nprobes.push_back(20);
+    nprobes.push_back(35);
     // nprobes.push_back(50);
     // nprobes.push_back(80);
     // nprobes.push_back(100);
-    nprobes.push_back(200);
-    nprobes.push_back(240);
-    nprobes.push_back(280);
-    nprobes.push_back(320);
-    nprobes.push_back(360);
-    nprobes.push_back(400);
-    nprobes.push_back(440);
-    nprobes.push_back(480);
+    // nprobes.push_back(200);
+    // nprobes.push_back(240);
+    // nprobes.push_back(280);
+    // nprobes.push_back(320);
+    // nprobes.push_back(360);
+    // nprobes.push_back(400);
+    // nprobes.push_back(440);
+    // nprobes.push_back(480);
 
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
@@ -50,7 +50,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     }
 #endif
     
-    for(auto nprobe:nprobes){
+    for(auto nprobe:nprobes) {
         total_time=0;
         adsampling::clear();
         int correct = 0;
@@ -60,7 +60,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
             adsampling::diskK_vec.clear();
 #endif
             GetCurTime( &run_start);
-            ResultHeap KNNs = ivf.search(Q.data + i * Q.d, k, nprobe);
+            ResultHeap KNNs = ivf.search(Q.data + i * Q.d, k, nprobe, 0, k_overlap, refine_num);
             GetCurTime( &run_end);
             GetTime(&run_start, &run_end, &usr_t, &sys_t);
             total_time += usr_t * 1e6;
@@ -97,8 +97,9 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         // cout << "time1: " << adsampling::time1 << ", time2: " << adsampling::time2 << ", time3: " << adsampling::time3 << endl;
         // cout << "average count of exact distance vectors: " << adsampling::cntt / Q.n << endl;
         // cout << "average count of exact srq_dist calls: " << adsampling::dist_cnt / Q.n << endl;
-        cout << "pruned rate: " << 1 - (adsampling::tot_dimension + (double)0.0) / adsampling::all_dimension << endl;
+        // cout << "pruned rate: " << 1 - (adsampling::tot_dimension + (double)0.0) / adsampling::all_dimension << endl;
         cout << "total distance calculation: " << adsampling::dist_cnt << endl;
+        cout << "time1: " << adsampling::time1 << ", time2: " << adsampling::time2 << ", time3: " << adsampling::time3 << ", time4: " << adsampling::time4 << endl;
     }
 #ifdef PLOT_DISK_K
     fout.close();
@@ -125,6 +126,9 @@ int main(int argc, char * argv[]) {
         {"result_path",                 required_argument, 0, 'r'},
         {"transformation_path",         required_argument, 0, 't'},
         {"diskK_path",                  required_argument, 0, 'a'},
+        {"k_overlap",                   required_argument, 0, 'o'},
+        {"refine_num",                  required_argument, 0, 'r'},
+        {"topk_clusters_path",          required_argument, 0, 'b'},
     };
 
     int ind;
@@ -137,12 +141,14 @@ int main(int argc, char * argv[]) {
     char result_path[256] = "";
     char dataset[256] = "";
     char transformation_path[256] = "";
-
+    char topk_clusters_path[256] = "";
     int randomize = 0;
-    int subk = 10000;
+    int subk = 1;
+    int k_overlap = 0;
+    int refine_num = 0;
 
     while(iarg != -1) {
-        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:a:", longopts, &ind);
+        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:a:o:c:b:", longopts, &ind);
         switch (iarg){
             case 'd':
                 if(optarg)randomize = atoi(optarg);
@@ -177,6 +183,15 @@ int main(int argc, char * argv[]) {
             case 'a':
                 if(optarg)strcpy(diskK_path, optarg);
                 break;
+            case 'o':
+                if(optarg)k_overlap = atoi(optarg);
+                break;
+            case 'c':
+                if(optarg)refine_num = atoi(optarg);
+                break;
+            case 'b':
+                if(optarg)strcpy(topk_clusters_path, optarg);
+                break;
         }
     }
     
@@ -198,6 +213,10 @@ int main(int argc, char * argv[]) {
     
     IVF ivf;
     ivf.load(index_path);
-    test(Q, G, ivf, subk);
+    if (topk_clusters_path != "") {
+        ivf.loadTopkClusters(topk_clusters_path, k_overlap);
+        ivf.flattenTopkClusters();
+    }
+    test(Q, G, ivf, subk, k_overlap, refine_num);
     return 0;
 }

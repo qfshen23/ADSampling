@@ -7,7 +7,7 @@ import os
 source = '/data/vector_datasets/'
 datasets = ['gist' , 'sift', 'deep1M']
 # the number of clusters
-K = 1024
+K = 1024 * 16
 
 def read_fvecs(filename, c_contiguous=True):
     fv = np.fromfile(filename, dtype=np.float32)

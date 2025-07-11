@@ -4,8 +4,8 @@ import struct
 import os
 
 source = '/data/vector_datasets/'
-datasets = ['gist', 'sift']
-K = 64
+datasets = ['deep1M']
+K = 16 * 1024
 
 def read_fvecs(filename, c_contiguous=True):
     fv = np.fromfile(filename, dtype=np.float32)

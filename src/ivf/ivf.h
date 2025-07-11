@@ -9,7 +9,6 @@ We explain the important variables for the enhanced IVF as follows.
     * For IVF++, d = delta_d. 
 2. L1_data - The array to store the first d dimensions of a vector.
 3. res_data - The array to store the remaining dimensions of a vector.
-
 */
 #include <omp.h>
 #include <limits>
@@ -24,6 +23,7 @@ We explain the important variables for the enhanced IVF as follows.
 #include "matrix.h"
 #include "utils.h"
 
+typedef uint64_t uint64_t;
 
 class IVF{
 public:
@@ -40,21 +40,29 @@ public:
     size_t* len;
     size_t* id;
 
+    // Top-k clusters data
+    uint64_t** topk_clusters_;
+    uint64_t* topk_clusters_flat_;
+    size_t topk_clusters_k_;
+
     IVF();
     IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive=0);
     IVF(const Matrix<float> &X, const Matrix<float> &_centroids, const Matrix<int> &groundtruth, int adaptive);
     ~IVF();
 
-    ResultHeap search(float* query, size_t k, size_t nprobe, float distK = std::numeric_limits<float>::max()) const;
+    ResultHeap search(float* query, size_t k, size_t nprobe, float distK = std::numeric_limits<float>::max(), size_t k_overlap = 0, size_t refine_num = 0) const;
     void save(char* filename);
     void load(char* filename);
-
+    void loadTopkClusters(const char* filename, size_t k_overlap);
+    void flattenTopkClusters();
 };
 
 IVF::IVF(){
     N = D = C = d = 0;
     start = len = id = NULL;
     L1_data = res_data = centroids = NULL;
+    topk_clusters_ = NULL;
+    topk_clusters_k_ = 0;
 }
 
 IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) {
@@ -62,6 +70,10 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) 
     N = X.n;
     D = X.d;
     C = _centroids.n;
+    
+    // Initialize topk_clusters_ member variables
+    topk_clusters_ = NULL;
+    topk_clusters_k_ = 0;
     
     assert(D >= 32);
     start = new size_t [C];
@@ -170,60 +182,16 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) 
     // 不要忘了释放 thread_temp 原来的内存（vector 的自动清理也可以）
     // 如果你要继续使用 temp，就不要释放
     temp.clear();
-
-    // std::vector<size_t> * temp = new std::vector<size_t> [C];
-
-    // for(int i=0;i<X.n;i++){
-    //     int belong = 0;
-    //     float dist_min = X.dist(i, _centroids, 0);
-    //     for(int j=1;j<C;j++){
-    //         float dist = X.dist(i, _centroids, j);
-    //         if(dist < dist_min){
-    //             dist_min = dist;
-    //             belong = j;
-    //         }
-    //     }
-    //     if(i % 50000 == 0){
-    //         std::cerr << "Processing - " << i << " / " << X.n  << std::endl;
-    //     }
-    //     temp[belong].push_back(i);
-    // }
-    // std::cerr << "Cluster Generated!" << std::endl;
-
-    // size_t sum = 0;
-    // for(int i=0;i<C;i++){
-    //     len[i] = temp[i].size();
-    //     start[i] = sum;
-    //     sum += len[i];
-    //     for(int j=0;j<len[i];j++){
-    //         id[start[i] + j] = temp[i][j];
-    //     }
-    // }
-
-    // if(adaptive == 1) d = 240;       // IVF++ - optimize cache (d = 32 by default)
-    // else if(adaptive == 0) d = D;   // IVF   - plain scan
-    // else d = 0;                     // IVF+  - plain ADSampling        
-
-    // L1_data   = new float [N * d + 10];
-    // res_data  = new float [N * (D - d) + 10];
-    // centroids = new float [C * D];
-    
-    // for(int i=0;i<N;i++){
-    //     int x = id[i];
-    //     for(int j=0;j<D;j++){
-    //         if(j < d) L1_data[i * d + j] = X.data[x * D + j];
-    //         else res_data[i * (D-d) + j - d] = X.data[x * D + j];
-    //     }
-    // }
-
-    // std::memcpy(centroids, _centroids.data, C * D * sizeof(float));
-    // delete [] temp;
 }
 
 IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, const Matrix<int> &groundtruth, int adaptive) {
     N = X.n;
     D = X.d;
     C = _centroids.n;
+
+    // Initialize topk_clusters_ member variables
+    topk_clusters_ = NULL;
+    topk_clusters_k_ = 0;
 
     assert(D >= 32);
     start = new size_t[C];
@@ -332,187 +300,155 @@ IVF::~IVF(){
     if(L1_data != NULL)delete [] L1_data;
     if(res_data != NULL)delete [] res_data;
     if(centroids != NULL)delete [] centroids;
-}
-
-ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const{
-    // unsigned int seed = 123456;
-    // std::mt19937 rng(seed);
-    // random_device rd;
-    // std::mt19937 rng(rd());
-    // std::uniform_real_distribution<float> random_dist(0.0, 1.0);
-    // the default value of distK is +inf 
-    Result* centroid_dist = new Result [C];
-
-    StopW stopw = StopW();
-    // Find out the closest N_{probe} centroids to the query vector.
-    for(int i=0;i<C;i++){
-#ifdef COUNT_DIST_TIME
-        StopW stopw = StopW();
-#endif
-        centroid_dist[i].first = sqr_dist(query, centroids + i * D, D);
-        adsampling::dist_cnt++;
-#ifdef COUNT_DIST_TIME
-        adsampling::distance_time += stopw.getElapsedTimeMicro();
-#endif               
-        centroid_dist[i].second = i;
+    
+    // Clean up topk_clusters_ data
+    if(topk_clusters_ != NULL) {
+        for(size_t i = 0; i < N; i++) {
+            if(topk_clusters_[i] != NULL) {
+                delete [] topk_clusters_[i];
+            }
+        }
+        delete [] topk_clusters_;
     }
 
-    // Find out the closest N_{probe} centroids to the query vector.
-    std::partial_sort(centroid_dist, centroid_dist + nprobe, centroid_dist + C);
+    if(topk_clusters_flat_ != NULL) delete [] topk_clusters_flat_;
+}
 
+ResultHeap IVF::search(
+    float* query, 
+    size_t k, 
+    size_t nprobe, 
+    float distK, 
+    size_t k_overlap, 
+    size_t refine_num
+) const {
+    StopW stopw;
+    Result* centroid_dist = new Result[C];
+    for(int i = 0; i < C; i++) {
+        centroid_dist[i].first = sqr_dist(query, centroids + i * D, D);
+        centroid_dist[i].second = i;
+    }
+    adsampling::dist_cnt += C;
+    std::partial_sort(centroid_dist, centroid_dist + nprobe, centroid_dist + C);
     adsampling::time1 += stopw.getElapsedTimeMicro();
+
+    size_t num_words = (C + 63) / 64;
+    uint64_t* query_bitmasks = new uint64_t[num_words]();
+    for (size_t i = 0; i < k_overlap; i++) {
+        uint32_t centroid_id = centroid_dist[i].second;
+        size_t word = centroid_id / 64;
+        size_t bit = centroid_id % 64;
+        query_bitmasks[word] |= ((uint64_t)1 << bit);
+    }
     
     size_t ncan = 0;
     for(int i=0;i<nprobe;i++)
         ncan += len[centroid_dist[i].second];
 
-    adsampling::dist_cnt += 1ll * ncan;
-    
-    adsampling::all_dimension += 1ll * ncan * D;
-
-    if(d == D) adsampling::tot_dimension += 1ll * ncan * D;
-    else if(d > 0) adsampling::tot_dimension += 1ll * ncan * d;
-
-    float * dist = new float [ncan];
-    Result * candidates = new Result [ncan];
-    int * obj= new int [ncan];
-    // bool * flag = new bool [ncan];
-    
+    size_t* overlap_ratios = new size_t[ncan];
+    size_t* overlap_ratios_copy = new size_t[ncan];
     size_t cur = 0;
-    // for(int i=0;i<nprobe;i++){
-    //     int cluster_id = centroid_dist[i].second;
-    //     for(int j=0;j<len[cluster_id];j++){
-    //         float r = random_dist(rng);
-    //         flag[cur] = (r <= 0.75);
-    //         cur ++;
-    //     }    
-    // }
 
-    // std::vector<size_t> cand;
-    // cand.reserve(ncan);
-    // for (size_t i = 0; i < nprobe; i++) {
-    //     int cluster_id = centroid_dist[i].second;
-    //     for (size_t j = 0; j < len[cluster_id]; j++) {
-    //         cand.push_back(start[cluster_id] + j);
-    //     }
-    // }
+    StopW stopw2;
+    
+    for(int pi = 0; pi < nprobe; ++pi) {
+        int cluster_id = centroid_dist[pi].second;
+        for(size_t j = 0; j < len[cluster_id]; ++j) {
+            size_t local_idx = start[cluster_id] + j;
+            uint64_t* vector_clusters = topk_clusters_flat_ + local_idx * num_words;
 
-    // std::random_device rd;
-    // std::mt19937 g(rd());
-    // std::shuffle(cand.begin(), cand.end(), g);
-
-    stopw = StopW();
-
-    // size_t tmp_size = (size_t)(cand.size() * 0.75);
-    // for (size_t i = 0; i < tmp_size; i++) {
-    //     size_t can = cand[i];
-    //     float tmp_dist = sqr_dist(query, L1_data + can * d, d);
-    //     candidates[i].first = tmp_dist;
-    //     candidates[i].second = id[can];
-    // }
-
-
-    // Scan a few initial dimensions and store the distances.
-    // For IVF (i.e., apply FDScanning), it should be D. 
-    // For IVF+ (i.e., apply ADSampling without optimizing data layout), it should be 0.
-    // For IVF++ (i.e., apply ADSampling with optimizing data layout), it should be delta_d (i.e., 32). 
-    cur = -1;
-    for(int i=0;i<nprobe;i++){
-        int cluster_id = centroid_dist[i].second;
-        for(int j=0;j<len[cluster_id];j++){
-             
-            // float r = random_dist(rng);
-            // bool not_process = r > 0.5;
-            // // 
-            // if(not_process) {
-            //     continue;
-            // }
-
-            // float r = random_dist(rng);
-            // // flag[cur] = (r <= 0.75);
-            // if(r >= 0.75) continue;
-
-            cur++;
-
-            size_t can = start[cluster_id] + j;
-
-            // StopW stopw3 = StopW();
+            int overlap_count = 0;
             
-#ifdef COUNT_DIST_TIME
-            StopW stopw = StopW();
-#endif
-            float tmp_dist = sqr_dist(query, L1_data + can * d, d);
-#ifdef COUNT_DIST_TIME
-            adsampling::distance_time += stopw.getElapsedTimeMicro();
-#endif      
-
-            // adsampling::time3 += stopw3.getElapsedTimeMicro();
+            // Use SIMD for vectorized bitwise operations and popcount
+            size_t simd_words = (num_words / 4) * 4; // Process 4 uint64_t at a time
             
-            if(d > 0) dist[cur] = tmp_dist; // IVF++ or IVF
-            else dist[cur] = 0; // IVF+  - plain ADSampling
-            obj[cur] = can;
-            candidates[cur].first = tmp_dist; // dist[cur];
-            candidates[cur].second = id[can];
-        }    
+            // SIMD processing for aligned words
+            for(size_t word_idx = 0; word_idx < simd_words; word_idx += 4) {
+                uint64_t overlap0 = vector_clusters[word_idx] & query_bitmasks[word_idx];
+                uint64_t overlap1 = vector_clusters[word_idx + 1] & query_bitmasks[word_idx + 1];
+                uint64_t overlap2 = vector_clusters[word_idx + 2] & query_bitmasks[word_idx + 2];
+                uint64_t overlap3 = vector_clusters[word_idx + 3] & query_bitmasks[word_idx + 3];
+                
+                overlap_count += __builtin_popcountll(overlap0);
+                overlap_count += __builtin_popcountll(overlap1);
+                overlap_count += __builtin_popcountll(overlap2);
+                overlap_count += __builtin_popcountll(overlap3);
+            }
+            
+            // Handle remaining words
+            for(size_t word_idx = simd_words; word_idx < num_words; word_idx++) {
+                uint64_t overlap_bits = vector_clusters[word_idx] & query_bitmasks[word_idx];
+                overlap_count += __builtin_popcountll(overlap_bits);
+            }
+            
+            overlap_ratios[cur] = overlap_count;
+            overlap_ratios_copy[cur++] = -overlap_count;
+        }
     }
 
-    adsampling::cntt += cur;
+    adsampling::time2 += stopw2.getElapsedTimeMicro();
 
-    adsampling::time2 += stopw.getElapsedTimeMicro();
+    const int MAX_OVERLAP = 64;
+    int bucket[MAX_OVERLAP + 1] = {0};
+    // 统计每个 overlap_ratio 出现次数
+    for (size_t i = 0; i < ncan; ++i)
+        bucket[overlap_ratios[i]]++;
 
-    ResultHeap KNNs;
-
-    // d == D indicates FDScanning. 
-    if(d == D){  // here, it should originally be d == D
-        StopW stopw = StopW();
-        
-        std::partial_sort(candidates, candidates + k, candidates + cur);
-        
-        for(int i=0;i < k;i++){
-            KNNs.emplace(candidates[i].first, candidates[i].second);
+    // 累加找到第 refine_num 大的 overlap ratio
+    int acc = 0, threshold = 0;
+    for (int v = MAX_OVERLAP; v >= 0; --v) {
+        acc += bucket[v];
+        if (acc >= (int)refine_num) {
+            threshold = v;
+            break;
         }
-        adsampling::time4 += stopw.getElapsedTimeMicro();
-    } else if(d < D) {  // d < D indicates ADSampling with and without cache-level optimization
-        auto cur_dist = dist;
-        for(int i = 0;i < nprobe;i++){
-            int cluster_id = centroid_dist[i].second;
-            for(int j=0;j<len[cluster_id];j++){
-                size_t can = start[cluster_id] + j;
-                
-#ifdef COUNT_DIST_TIME
-                StopW stopw = StopW();
-#endif
-                float tmp_dist = adsampling::dist_comp(distK, res_data + can * (D-d), query + d, *cur_dist, d);
-#ifdef COUNT_DIST_TIME
-                adsampling::distance_time += stopw.getElapsedTimeMicro();
-#endif                     
-                if(tmp_dist > 0){
-                    KNNs.emplace(tmp_dist, id[can]);
-                    if(KNNs.size() > k) KNNs.pop();
-                }
-                if(KNNs.size() == k && KNNs.top().first < distK){
-                    distK = KNNs.top().first;
-                }
+    }
 
-                // if((j % 100) == 0 and distK < 1e20) {
-                //     adsampling::diskK_vec.push_back(distK);
-                // }
-
-                if(distK < 1e20) {
-                    adsampling::diskK_vec.push_back(distK);
-                }
-                
-                cur_dist++;
-                
+    StopW stopw3;
+    
+    Result* dist_candidates = new Result[refine_num * 2];
+    cur = 0;
+    size_t idx = 0;
+    
+    for(int pi = 0; pi < nprobe; ++pi) {
+        int cluster_id = centroid_dist[pi].second;
+        for(size_t j = 0; j < len[cluster_id]; ++j) {
+            size_t local_idx = start[cluster_id] + j;
+            float overlap_ratio = overlap_ratios[cur++];
+            if(overlap_ratio >= threshold && idx < refine_num) {
+                float dist = sqr_dist(query, L1_data + local_idx * d, d);
+                dist_candidates[idx] = Result(dist, id[local_idx]);
+                idx++;
             }
         }
+        if(idx >= refine_num) break;
     }
 
-    delete [] centroid_dist;
-    delete [] dist;
-    delete [] candidates;
-    delete [] obj;
-    // delete [] flag;
+    adsampling::time3 += stopw3.getElapsedTimeMicro();
+
+    StopW stopw4;
+    
+    adsampling::dist_cnt += idx;
+
+    std::partial_sort(
+        dist_candidates,
+        dist_candidates + k,
+        dist_candidates + idx
+    );
+
+    adsampling::time4 += stopw4.getElapsedTimeMicro();
+
+    ResultHeap KNNs;
+    for(size_t i = 0; i < k; i++) {
+        KNNs.emplace(dist_candidates[i].first, dist_candidates[i].second);
+    }
+
+    // 清理资源
+    delete[] centroid_dist;
+    delete[] query_bitmasks;
+    delete[] overlap_ratios;
+    delete[] overlap_ratios_copy;
+    delete[] dist_candidates;
     return KNNs;
 }
 
@@ -567,3 +503,74 @@ void IVF::load(char * filename){
     input.close();
 }
 
+void IVF::loadTopkClusters(const char* filename, size_t k_overlap) {
+    topk_clusters_k_ = k_overlap;
+
+    std::ifstream input(filename, std::ios::binary);
+    if (!input.is_open()) {
+        throw std::runtime_error(std::string("Cannot open topk clusters file for reading: ") + filename);
+    }
+
+    int num_clusters = C;
+    size_t vec_index = 0;
+
+    int cluster_flag_width = (num_clusters + 63) / 64;
+    topk_clusters_ = new uint64_t*[N];
+    for (size_t i = 0; i < N; i++) {
+        topk_clusters_[i] = new uint64_t[cluster_flag_width];
+    }
+
+    while (input.read(reinterpret_cast<char*>(&num_clusters), sizeof(int))) {
+        if (num_clusters <= 0) {
+            throw std::runtime_error("Invalid number of clusters in topk cluster file");
+        }
+
+        if (vec_index >= N) {
+            throw std::runtime_error("Top-k cluster file has more entries than base vectors");
+        }
+
+        std::vector<int> cluster_ids(num_clusters);
+        input.read(reinterpret_cast<char*>(cluster_ids.data()), sizeof(int) * num_clusters);
+
+        // Only take the first topk clusters
+        size_t clusters_to_process = std::min(k_overlap, (size_t)num_clusters);
+        
+        // Map only the nearest topk cluster_ids to bitmask
+        for (size_t i = 0; i < clusters_to_process; i++) {
+            int cluster_id = cluster_ids[i];
+            if (cluster_id < 0 || cluster_id >= num_clusters) {
+                throw std::runtime_error("Cluster ID out of range");
+            }
+            size_t word = cluster_id / 64;
+            size_t bit = cluster_id % 64;
+            topk_clusters_[vec_index][word] |= ((uint64_t)1 << bit);
+        }
+
+        vec_index++;
+    }
+
+    if (vec_index != N) {
+        std::cerr << "Warning: topk cluster file has " << vec_index 
+                << " entries, but index has " << N << " base vectors." << std::endl;
+    }
+
+    input.close();
+}
+
+void IVF::flattenTopkClusters() {
+    if (!topk_clusters_ || !id) return;
+    size_t cluster_flag_width = (C + 63) / 64;
+    topk_clusters_flat_ = new uint64_t[N * cluster_flag_width];
+    std::fill(topk_clusters_flat_, topk_clusters_flat_ + N * cluster_flag_width, 0);
+    for (size_t i = 0; i < N; ++i) {
+        size_t sorted_idx = i;
+        size_t vector_id = id[i];
+        for (size_t w = 0; w < cluster_flag_width; ++w) {
+            topk_clusters_flat_[sorted_idx * cluster_flag_width + w] = topk_clusters_[vector_id][w];
+        }
+    }
+    // 删除原有
+    for(size_t i = 0; i < N; ++i) delete[] topk_clusters_[i];
+    delete[] topk_clusters_;
+    topk_clusters_ = nullptr;
+}

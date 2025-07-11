@@ -5,7 +5,7 @@ import os
 
 source = '/data/vector_datasets/'
 datasets = ['sift']
-K = 64
+K = 16 * 1024
 
 def read_fvecs(filename, c_contiguous=True):
     fv = np.fromfile(filename, dtype=np.float32)
@@ -41,13 +41,8 @@ if __name__ == '__main__':
 
         # Read data
         X = read_fvecs(data_path)
+        centroids = read_fvecs(centroids_path)
         D = X.shape[1]
-
-        # Train index and extract centroids
-        index = faiss.index_factory(D, f"IVF{K},Flat")
-        index.verbose = True
-        index.train(X)
-        centroids = index.quantizer.reconstruct_n(0, index.nlist)
 
         # Assign each point to nearest centroid
         batch_size = 10000
