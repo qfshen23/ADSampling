@@ -5,7 +5,7 @@ g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/incl
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results 
-datasets=('sift')
+datasets=('gist')
 C=1024
 K=100
 prop=25
@@ -38,8 +38,6 @@ do
         trans="${path}/${data}/O.fvecs"
 
         diskK="${result_path}/${data}_IVF${C}_${randomize}_diskK.log"
-
-        > "$diskK"
 
         ./src/search_ivf -d ${randomize} -n ${data} -i ${index} -q ${query} -g ${gnd} -r ${res} -t ${trans} -k ${K} -a ${diskK}
  

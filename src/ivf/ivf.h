@@ -337,7 +337,7 @@ IVF::~IVF(){
 ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const{
     Result* centroid_dist = new Result [C];
 
-    StopW stopw = StopW();
+    //StopW stopw = StopW();
     // Find out the closest N_{probe} centroids to the query vector.
     for(int i=0;i<C;i++){
 #ifdef COUNT_DIST_TIME
@@ -350,10 +350,12 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
         centroid_dist[i].second = i;
     }
 
+    adsampling::dist_cnt += 1ll * C;
+
     // Find out the closest N_{probe} centroids to the query vector.
     std::partial_sort(centroid_dist, centroid_dist + nprobe, centroid_dist + C);
 
-    adsampling::time1 += stopw.getElapsedTimeMicro();
+    //adsampling::time1 += stopw.getElapsedTimeMicro();
     
     size_t ncan = 0;
     for(int i=0;i<nprobe;i++)
@@ -367,10 +369,12 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     float * dist = new float [ncan];
     Result * candidates = new Result [ncan];
     int * obj= new int [ncan];
+
+    adsampling::dist_cnt += 1ll * ncan;
     
     size_t cur = 0;
 
-    stopw = StopW();
+    //stopw = StopW();
 
     // Scan a few initial dimensions and store the distances.
     // For IVF (i.e., apply FDScanning), it should be D. 
@@ -407,20 +411,20 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
 
     adsampling::cntt += cur;
 
-    adsampling::time2 += stopw.getElapsedTimeMicro();
+    //adsampling::time2 += stopw.getElapsedTimeMicro();
 
     ResultHeap KNNs;
 
     // d == D indicates FDScanning. 
     if(d == D){  // here, it should originally be d == D
-        StopW stopw = StopW();
+        //StopW stopw = StopW();
         
         std::partial_sort(candidates, candidates + k, candidates + cur);
         
         for(int i=0;i < k;i++){
             KNNs.emplace(candidates[i].first, candidates[i].second);
         }
-        adsampling::time4 += stopw.getElapsedTimeMicro();
+        //adsampling::time4 += stopw.getElapsedTimeMicro();
     } else if(d < D) {  // d < D indicates ADSampling with and without cache-level optimization
         auto cur_dist = dist;
         for(int i = 0;i < nprobe;i++){
@@ -461,7 +465,6 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     delete [] dist;
     delete [] candidates;
     delete [] obj;
-    // delete [] flag;
     return KNNs;
 }
 
