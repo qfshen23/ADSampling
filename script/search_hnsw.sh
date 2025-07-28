@@ -10,7 +10,7 @@ topk_clusters=64
 
 for data in "${datasets[@]}"
 do  
-    for K in 1024
+    for K in 64
     do
 
         if [ $adaptive -ne 0 ];then
@@ -50,6 +50,8 @@ do
 
         # sudo perf stat -e branch-misses,branch-instructions  
         # sudo perf record -F 8000 
-        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -f ${flags_file} -c ${centroid_file} -l ${cluster_ids_file} -b ${clusters_file} -h ${topk_clusters}
+        # ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -f ${flags_file} -c ${centroid_file} -l ${cluster_ids_file} -b ${clusters_file} -h ${topk_clusters}
+    
+        ./src/search_hnsw -d ${adaptive} -n ${data} -i ${index_file} -q ${query} -g ${gnd} -r ${res} -f ${flags_file} -c ${centroid_file} -l ${cluster_ids_file}
     done
 done

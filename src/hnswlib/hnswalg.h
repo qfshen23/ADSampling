@@ -319,69 +319,29 @@ namespace hnswlib {
             pruned_vertices_.clear();
             entry_ids_.push_back(ep_id);
 
-            // std::vector<uint32_t> nearest_centroids;
-            // std::vector<uint32_t> query_bitmasks;
-            // if (has_centroids_ && !cluster_flags_.empty()) {
-            //     // Calculate all distances first
-            //     std::vector<std::pair<dist_t, uint32_t>> centroid_distances;
-            //     centroid_distances.reserve(num_centroids_);
-                
-            //     // Calculate distance to each centroid
-            //     for (size_t i = 0; i < num_centroids_; i++) {
-            //         dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
-            //         adsampling::tot_full_dist++;
-            //         centroid_distances.emplace_back(dist, i);
-            //     }
-                
-            //     // Sort all distances
-            //     std::partial_sort(centroid_distances.begin(), 
-            //                     centroid_distances.begin() + std::min(topk_clusters_, centroid_distances.size()),
-            //                     centroid_distances.end());
-                
-            //     // Take topk_clusters_ nearest centroids and set bitmask
-            //     query_bitmasks.resize(cluster_flag_width_, 0);
-            //     for (size_t i = 0; i < std::min(topk_clusters_, centroid_distances.size()); i++) {
-            //         uint32_t centroid_id = centroid_distances[i].second;
-                    
-            //         // Set bit in bitmask
-            //         size_t word = centroid_id / 32;
-            //         size_t bit = centroid_id % 32;
-            //         query_bitmasks[word] |= (1U << bit);
-            //     }
-            // }
-
-            /*
-            // Find the nearest centroids to the query point
-            std::vector<uint32_t> nearest_centroids;
-            if (has_centroids_ && !cluster_flags_.empty()) {
-                const size_t K_NEAREST = 2; // Number of nearest centroids to consider
-                
-                // Calculate all distances first
-                std::vector<std::pair<dist_t, uint32_t>> centroid_distances;
+            // Calculate distances to all centroids and store ranks
+            if (has_centroids_) {
+                std::vector<std::pair<dist_t, size_t>> centroid_distances;
                 centroid_distances.reserve(num_centroids_);
                 
                 // Calculate distance to each centroid
                 for (size_t i = 0; i < num_centroids_; i++) {
                     dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
-                    adsampling::tot_full_dist++;
                     centroid_distances.emplace_back(dist, i);
                 }
+
+                // Sort by distance to get ranks
+                std::sort(centroid_distances.begin(), centroid_distances.end());
                 
-                // Sort all distances
-                std::partial_sort(centroid_distances.begin(), 
-                                 centroid_distances.begin() + std::min(K_NEAREST, centroid_distances.size()),
-                                 centroid_distances.end());
-                
-                // Take the K nearest centroids
-                nearest_centroids.reserve(std::min(K_NEAREST, centroid_distances.size()));
-                for (size_t i = 0; i < std::min(K_NEAREST, centroid_distances.size()); i++) {
-                    nearest_centroids.push_back(centroid_distances[i].second);
+                // Store ranks in adsampling::cluster_rank
+                adsampling::cluster_rank.clear();
+                adsampling::cluster_rank.resize(num_centroids_);
+                for (size_t i = 0; i < centroid_distances.size(); i++) {
+                    size_t centroid_id = centroid_distances[i].second;
+                    adsampling::cluster_rank[centroid_id] = i;
                 }
-                
-                query_nearest_centroids_ = nearest_centroids;
             }
-            */
-            
+
             // top_candidates - the result set R
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
             // candidate_set  - the search set S
@@ -409,14 +369,24 @@ namespace hnswlib {
             }
 
             visited_array[ep_id] = visited_array_tag;
-            int cnt_visit = 0;
+            adsampling::visited_vector_ids.push_back(ep_id);
+            int cnt_visit = 1;
 
             std::map<tableint, int> hops;
             hops[ep_id] = 0;
 
+            
+            bool flag = false;
+
             // Iteratively generate candidates and conduct DCOs to maintain the result set R.
             while (!candidate_set.empty()) {
+                // std::vector<std::pair<dist_t, tableint>> candidates;
+                // if(cnt_visit > 100) {  
+                //     flag = true;
+                // }
                 std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
+
+                std::vector<int> out_edges;
 
                 // When the smallest object in S has its distance larger than the largest in R, terminate the algorithm.
                 if ((-current_node_pair.first) > lowerBound && (top_candidates.size() == ef || has_deletions == false)) {
@@ -426,6 +396,9 @@ namespace hnswlib {
 
                 int hop = hops[current_node_pair.second];
 
+                
+
+                /*
                 // if (cnt_visit > 10000 && !topk_cluster_flags_.empty()) {
                 //     tableint candidate_id = current_node_pair.second;
                 //     int collision_count = 0;
@@ -444,8 +417,8 @@ namespace hnswlib {
                 // if(hop > 1) {
                 //     continue;
                 // }
-
-                // Fetch the smallest object in S. 
+                */
+                 
                 tableint current_node_id = current_node_pair.second;
                 int *data = (int *) get_linklist0(current_node_id);
                 size_t size = getListCount((linklistsizeint*)data);
@@ -453,9 +426,12 @@ namespace hnswlib {
                 // Enumerate all the neighbors of the object and view them as candidates of KNNs. 
                 for (size_t j = 1; j <= size; j++) {
                     int candidate_id = *(data + j);
+                    out_edges.push_back(candidate_id);
                     if (!(visited_array[candidate_id] == visited_array_tag)) {
-                        cnt_visit++;
+                        // out_edges.push_back(candidate_id);
+                        // adsampling::visited_vector_ids.push_back(candidate_id);
                         visited_array[candidate_id] = visited_array_tag;
+
                         hops[candidate_id] = hop + 1;
                         adsampling::visited_hop[candidate_id] = hop + 1;
                         // Apply pruning if we have nearest centroids and cluster flags
@@ -495,12 +471,12 @@ namespace hnswlib {
 #ifdef COUNT_DIST_TIME
                         adsampling::distance_time += stopw.getElapsedTimeMicro();
 #endif                  
+
                         adsampling::tot_full_dist++;
-                        
                         if (top_candidates.size() < ef || lowerBound > dist) {                      
                             candidate_set.emplace(-dist, candidate_id);
-                            if (!has_deletions || !isMarkedDeleted(candidate_id))
-                                top_candidates.emplace(dist, candidate_id);
+                            
+                            top_candidates.emplace(dist, candidate_id);
 
                             if (top_candidates.size() > ef)
                                 top_candidates.pop();
@@ -508,8 +484,56 @@ namespace hnswlib {
                             if (!top_candidates.empty())
                                 lowerBound = top_candidates.top().first;
                         }
+
+                        //candidates.emplace_back(dist, candidate_id);
                     }
                 }
+
+                adsampling::out_edge_for_visited_vector.push_back(out_edges);
+            
+                // std::sort(candidates.begin(), candidates.end());
+                // int candidate_cnt = candidates.size();
+                // if(flag) {
+                //     for(int i = 0; i < candidate_cnt / 2; i++) {
+                //         dist_t dist = candidates[i].first;
+                //         tableint candidate_id = candidates[i].second;
+                //         if (top_candidates.size() < ef || lowerBound > dist) {                      
+                //             candidate_set.emplace(-dist, candidate_id);
+
+                //             top_candidates.emplace(dist, candidate_id);
+
+                //             if (top_candidates.size() > ef)
+                //                 top_candidates.pop();
+
+                //             if (!top_candidates.empty())
+                //                 lowerBound = top_candidates.top().first;
+                //         }
+                //         visited_array[candidate_id] = visited_array_tag;
+                //         adsampling::tot_full_dist++;
+                //         cnt_visit++;
+                //     }
+                // } else {
+                //     for(int i = candidate_cnt / 2;i < candidate_cnt; i++) {
+                //         dist_t dist = candidates[i].first;
+                //         tableint candidate_id = candidates[i].second;
+                //         if (top_candidates.size() < ef || lowerBound > dist) {                      
+                //             candidate_set.emplace(-dist, candidate_id);
+                            
+                //             top_candidates.emplace(dist, candidate_id);
+
+                //             if (top_candidates.size() > ef)
+                //                 top_candidates.pop();
+
+                //             if (!top_candidates.empty())
+                //                 lowerBound = top_candidates.top().first;
+                //         }
+                //         visited_array[candidate_id] = visited_array_tag;
+                //         adsampling::tot_full_dist++;
+                //         cnt_visit++;
+                //     }
+                // }
+            
+            
             }
 
             // int sum_hops = 0;

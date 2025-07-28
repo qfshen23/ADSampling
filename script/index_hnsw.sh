@@ -3,8 +3,8 @@ cd ..
 g++ -o ./src/index_hnsw ./src/index_hnsw.cpp -I ./src/ -O3 -I /usr/include/eigen3 
 
 efConstruction=500
-M=32
-datasets=('sift' 'deep1M')
+M=16
+datasets=('sift' 'deep1M' 'msong' 'tiny5m' 'gist' 'sift10m')
 
 for data in "${datasets[@]}"
 do  
@@ -35,7 +35,7 @@ do
         fi
 
         # 0 - IVF, 1 - IVF++, 2 - IVF+
-        index_file="${index_path}/O${data}_ef${efConstruction}_M${M}.index"
+        index_file="${index_path}/${data}_ef${efConstruction}_M${M}.index"
         echo $index_file
 
         ./src/index_hnsw -d $data_file -i $index_file -e $efConstruction -m $M

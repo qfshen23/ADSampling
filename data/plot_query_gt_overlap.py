@@ -66,10 +66,10 @@ def compute_recall_by_overlap(probe_vector_ids, overlap_ratios, gt_vector_ids, t
 
 def main():
     datasets = ['sift']  # List of datasets to process
-    K = 1024 * 16  # Number of clusters
+    K = 1024  # Number of clusters
     k_overlap = 64  # Top-k clusters for overlap computation
-    nprobe = 80  # Number of nearest clusters to probe
-    top_x_values = [500, 1000, 2000, 3000, 4000]  # Different x values for recall computation
+    nprobe = 40  # Number of nearest clusters to probe
+    top_x_values = [2000, 4000, 6000, 8000]  # Different x values for recall computation
     gt_neighbors = 10  # Number of ground truth neighbors to consider
 
     for dataset in datasets:
@@ -80,7 +80,8 @@ def main():
         query_path = f'{base_path}/{dataset}_query.fvecs'
         gt_path = f'{base_path}/{dataset}_groundtruth_10000.ivecs'
         centroids_path = f'{base_path}/{dataset}_centroid_{K}.fvecs'
-        top_clusters_path = f'{base_path}/{dataset}_top_clusters_1024_of_{K}.ivecs'
+        # top_clusters_path = f'{base_path}/{dataset}_top_clusters_1024_of_{K}.ivecs'
+        top_clusters_path = f'{base_path}/{dataset}_top_clusters_1024.ivecs'
         cluster_ids_path = f'{base_path}/{dataset}_cluster_id_{K}.ivecs'
         
         # Skip if files don't exist

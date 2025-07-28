@@ -45,6 +45,10 @@ public:
     uint64_t* topk_clusters_flat_;
     size_t topk_clusters_k_;
 
+    // Top centroids data
+    float* top_centroids_;
+    size_t top_centroids_num_;
+
     IVF();
     IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive=0);
     IVF(const Matrix<float> &X, const Matrix<float> &_centroids, const Matrix<int> &groundtruth, int adaptive);
@@ -55,7 +59,13 @@ public:
     void load(char* filename);
     void loadTopkClusters(const char* filename, size_t k_overlap);
     void flattenTopkClusters();
+    void loadTopkCentroids(const char* filename);
+    void setTopkCentroidsNum(size_t num);
 };
+
+void IVF::setTopkCentroidsNum(size_t num){
+    this->top_centroids_num_ = num;
+}
 
 IVF::IVF(){
     N = D = C = d = 0;
@@ -63,6 +73,8 @@ IVF::IVF(){
     L1_data = res_data = centroids = NULL;
     topk_clusters_ = NULL;
     topk_clusters_k_ = 0;
+    top_centroids_ = NULL;
+    top_centroids_num_ = 0;
 }
 
 IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) {
@@ -74,6 +86,10 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) 
     // Initialize topk_clusters_ member variables
     topk_clusters_ = NULL;
     topk_clusters_k_ = 0;
+    
+    // Initialize top_centroids_ member variables
+    top_centroids_ = NULL;
+    top_centroids_num_ = 0;
     
     assert(D >= 32);
     start = new size_t [C];
@@ -187,6 +203,10 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, const Matrix<i
     // Initialize topk_clusters_ member variables
     topk_clusters_ = NULL;
     topk_clusters_k_ = 0;
+
+    // Initialize top_centroids_ member variables
+    top_centroids_ = NULL;
+    top_centroids_num_ = 0;
 
     assert(D >= 32);
     start = new size_t[C];
@@ -307,6 +327,9 @@ IVF::~IVF(){
     }
 
     if(topk_clusters_flat_ != NULL) delete [] topk_clusters_flat_;
+    
+    // Clean up top_centroids_ data
+    if(top_centroids_ != NULL) delete [] top_centroids_;
 }
 
 ResultHeap IVF::search(
@@ -327,10 +350,17 @@ ResultHeap IVF::search(
     std::partial_sort(centroid_dist, centroid_dist + nprobe, centroid_dist + C);
     //adsampling::time1 += stopw.getElapsedTimeMicro();
 
-    size_t num_words = (C + 63) / 64;
+    Result* topk_centroids_dist = new Result[top_centroids_num_];
+    for(int i = 0; i < top_centroids_num_; i++) {
+        topk_centroids_dist[i].first = sqr_dist(query, top_centroids_ + i * D, D);
+        topk_centroids_dist[i].second = i;
+    }
+    std::partial_sort(topk_centroids_dist, topk_centroids_dist + k_overlap, topk_centroids_dist + top_centroids_num_);
+
+    size_t num_words = (top_centroids_num_ + 63) / 64;
     uint64_t* query_bitmasks = new uint64_t[num_words]();
     for (size_t i = 0; i < k_overlap; i++) {
-        uint32_t centroid_id = centroid_dist[i].second;
+        uint32_t centroid_id = topk_centroids_dist[i].second;
         size_t word = centroid_id / 64;
         size_t bit = centroid_id % 64;
         query_bitmasks[word] |= ((uint64_t)1 << bit);
@@ -352,7 +382,10 @@ ResultHeap IVF::search(
             size_t local_idx = start[cluster_id] + j;
             uint64_t* vector_clusters = topk_clusters_flat_ + local_idx * num_words;
 
-            int overlap_count = 0;
+            // uint64_t overlap_bits = vector_clusters[0] & query_bitmasks;
+            // int overlap_count = __builtin_popcountll(overlap_bits);
+
+            size_t overlap_count = 0;
             
             // Use SIMD for vectorized bitwise operations and popcount
             size_t simd_words = (num_words / 4) * 4; // Process 4 uint64_t at a time
@@ -468,9 +501,9 @@ ResultHeap IVF::search(
     }
 
     delete[] centroid_dist;
-    delete[] query_bitmasks;
     delete[] overlap_ratios;
     delete[] dist_candidates;
+    delete[] query_bitmasks;
     return KNNs;
 }
 
@@ -533,7 +566,7 @@ void IVF::loadTopkClusters(const char* filename, size_t k_overlap) {
         throw std::runtime_error(std::string("Cannot open topk clusters file for reading: ") + filename);
     }
 
-    int num_clusters = C;
+    int num_clusters = top_centroids_num_;
     size_t vec_index = 0;
 
     int cluster_flag_width = (num_clusters + 63) / 64;
@@ -581,7 +614,7 @@ void IVF::loadTopkClusters(const char* filename, size_t k_overlap) {
 
 void IVF::flattenTopkClusters() {
     if (!topk_clusters_ || !id) return;
-    size_t cluster_flag_width = (C + 63) / 64;
+    size_t cluster_flag_width = (top_centroids_num_ + 63) / 64;
     topk_clusters_flat_ = new uint64_t[N * cluster_flag_width];
     std::fill(topk_clusters_flat_, topk_clusters_flat_ + N * cluster_flag_width, 0);
     for (size_t i = 0; i < N; ++i) {
@@ -595,4 +628,53 @@ void IVF::flattenTopkClusters() {
     for(size_t i = 0; i < N; ++i) delete[] topk_clusters_[i];
     delete[] topk_clusters_;
     topk_clusters_ = nullptr;
+}
+
+void IVF::loadTopkCentroids(const char* filename) {
+    std::ifstream input(filename, std::ios::binary);
+    if (!input.is_open()) {
+        throw std::runtime_error(std::string("Cannot open top centroids file for reading: ") + filename);
+    }
+
+    // Read the dimension first (4 bytes for int)
+    int dim;
+    input.read(reinterpret_cast<char*>(&dim), sizeof(int));
+    if (input.gcount() != sizeof(int)) {
+        throw std::runtime_error("Failed to read dimension from centroids file");
+    }
+    
+    // Count total number of vectors by reading file size
+    input.seekg(0, std::ios::end);
+    std::streamsize file_size = input.tellg();
+    input.seekg(0, std::ios::beg);
+    
+    // Each vector: 4 bytes for dimension + dim * 4 bytes for floats
+    size_t bytes_per_vector = sizeof(int) + D * sizeof(float);
+    top_centroids_num_ = file_size / bytes_per_vector;
+    
+    if (file_size % bytes_per_vector != 0) {
+        throw std::runtime_error("Invalid fvecs file format: file size not aligned with vector size");
+    }
+
+    // Allocate memory for centroids
+    top_centroids_ = new float[top_centroids_num_ * D];
+    
+    // Read all vectors
+    for (size_t i = 0; i < top_centroids_num_; i++) {
+        // Read dimension (should be same as first one)
+        int vec_dim;
+        input.read(reinterpret_cast<char*>(&vec_dim), sizeof(int));
+        if (vec_dim != dim) {
+            throw std::runtime_error("Inconsistent dimension in fvecs file");
+        }
+        
+        // Read vector data
+        input.read(reinterpret_cast<char*>(top_centroids_ + i * D), 
+                   D * sizeof(float));
+    }
+    
+    input.close();
+    
+    std::cerr << "Loaded " << top_centroids_num_ << " centroids with dimension " 
+              << D << std::endl;
 }

@@ -65,7 +65,7 @@ int main(int argc, char * argv[]) {
     Matrix<float> *X = new Matrix<float>(data_path);
     size_t D = X->d;
     size_t N = X->n;
-    size_t report = 50000;
+    size_t report = 50000; 
 
     L2Space l2space(D);
     HierarchicalNSW<float>* appr_alg = new HierarchicalNSW<float> (&l2space, N, M, efConstruction);

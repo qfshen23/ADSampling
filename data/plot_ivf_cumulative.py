@@ -28,11 +28,11 @@ def read_ivecs(filename):
     iv = iv[:, 1:]
     return iv
     
-K = 1024
-datasets = ['sift']
+K = 2048
+datasets = ['tiny5m']
 data_path = '/data/vector_datasets'
-top_k_clusters = 120    
-k_values = [100]  # k nearest neighbors to consider (out of 10000 available)
+top_k_clusters = 128    
+k_values = [1, 10, 20, 50]  # k nearest neighbors to consider (out of 10000 available)
 
 for dataset in datasets:
     dataset_path = os.path.join(data_path, dataset)
@@ -78,7 +78,7 @@ for dataset in datasets:
         cumulative_percentage = np.cumsum(percentage)
 
         # --------- 关键节点选取与标注 ---------
-        thresholds = [0.8, 0.9, 0.95]
+        thresholds = [0.8, 0.9, 0.95, 0.98, 0.99]
         key_points = []
         total_cum = cumulative_percentage[-1]
         for t in thresholds:

@@ -47,6 +47,10 @@ int pruned_in_gt_flag_rank_count[100] = {0};  // rank bucket
 
 std::map<unsigned int, int> visited_hop;
 
+std::vector<unsigned int> visited_vector_ids;
+std::vector<int> cluster_rank;
+std::vector<std::vector<int>> out_edge_for_visited_vector;
+
 void clear() {
     dist_cnt = 0;
     distance_time = 0;
@@ -61,7 +65,9 @@ void clear() {
     avg_gt_in_same_cluster = 0.0;
     avg_query_in_same_cluster = 0.0;
     diskK_vec.clear();
-
+    visited_vector_ids.clear();
+    cluster_rank.clear();
+    out_edge_for_visited_vector.clear();
     for (int i = 0; i < 100; i++) {
         avg_gt_in_same_cluster_vec[i] = 0;
         avg_query_in_same_cluster_vec[i] = 0;

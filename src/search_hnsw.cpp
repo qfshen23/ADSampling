@@ -57,69 +57,127 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
     size_t total = 0;
     long double total_time = 0;
 
-    // Create vectors to store hop counts for each rank
-    static vector<int> hop_sums(10000, 0);
-    static vector<int> hop_counts(10000, 0);
+    static std::vector<int> clusters_accessed_per_query;
+    static std::map<int, long long> global_cluster_rank_access_count;
+
+    // --- 新增：用于 histogram 统计 ---
+    // 每个 query 的窗口数量可能不同，需要用 vector<query_idx, vector<窗口idx, 命中数>>
+    std::vector<std::vector<int>> query_histograms;
+    // 统计每个窗口有多少 query 参与平均
+    std::vector<int> window_counts;
+    // ------------------------------
 
     adsampling::clear();
 
-    for (int i = 0; i < 10000; i++) {
+    for (int i = 0; i < 1; i++) {
         adsampling::visited_hop.clear();
+        adsampling::visited_vector_ids.clear();
+        adsampling::cluster_rank.clear();
+        adsampling::out_edge_for_visited_vector.clear();
 #ifndef WIN32
         float sys_t, usr_t, usr_t_sum = 0;  
         struct rusage run_start, run_end;
-        GetCurTime( &run_start);
+        GetCurTime(&run_start);
 #endif
 
-        std::priority_queue<std::pair<float, labeltype >> result = appr_alg.searchKnn(massQ + vecdim * i, k, adaptive);  
+        std::priority_queue<std::pair<float, labeltype>> result = appr_alg.searchKnn(massQ + vecdim * i, k, adaptive);  
 
 #ifndef WIN32
-        GetCurTime( &run_end);
-        GetTime( &run_start, &run_end, &usr_t, &sys_t);
+        GetCurTime(&run_end);
+        GetTime(&run_start, &run_end, &usr_t, &sys_t);
         total_time += usr_t * 1e6;
 #endif
 
-        std::priority_queue<std::pair<float, labeltype >> gt(answers[i]);
+        std::priority_queue<std::pair<float, labeltype>> gt(answers[i]);
         total += gt.size();
 
-        int gt_rank = 9999;
-        while (!gt.empty() && gt_rank >= 0) {
-            labeltype gt_id = gt.top().second;
-            gt.pop();
-
-            // If this gt point was visited during search
-            auto hop_it = adsampling::visited_hop.find(gt_id);
-            if (hop_it != adsampling::visited_hop.end() && hop_it->second < 99) {
-                hop_sums[gt_rank] += hop_it->second;
-                hop_counts[gt_rank]++;
+        // Get top 3 closest clusters for this query
+        std::vector<unsigned> top3_cluster_ids;
+        if (adsampling::cluster_rank.size() > 0) {
+            std::vector<std::pair<int, unsigned>> rank_with_id;
+            for (unsigned cid = 0; cid < adsampling::cluster_rank.size(); ++cid) {
+                rank_with_id.emplace_back(adsampling::cluster_rank[cid], cid);
             }
-            gt_rank --;
+            std::sort(rank_with_id.begin(), rank_with_id.end());
+            for (int j = 0; j < 1 && j < (int)rank_with_id.size(); ++j) {
+                top3_cluster_ids.push_back(rank_with_id[j].second);
+            }
         }
 
-        std::priority_queue<std::pair<float, labeltype >> gt2(answers[i]);
+        unsigned nearest_cluster = top3_cluster_ids[0];
+        
+        // Open file to write edge percentages
+        std::ofstream outfile("edge_percentages.txt", std::ios::app);
+        
+        // For each visited vector, analyze its out edges
+        for (size_t v = 0; v < adsampling::out_edge_for_visited_vector.size(); v++) {
+            
+            const std::vector<int>& out_edges = adsampling::out_edge_for_visited_vector[v];
+            if (out_edges.empty()) continue;
+            
+            int edges_to_nearest = 0;
+            for (int neighbor_id : out_edges) {
+                if (neighbor_id >= appr_alg.cur_element_count) continue;
+                if (cluster_ids[neighbor_id] == nearest_cluster) {
+                    edges_to_nearest++;
+                }
+            }
+            
+            // Calculate and write percentage to file
+            float percent = 100.0f * edges_to_nearest / out_edges.size();
+            if (outfile.is_open()) {
+                outfile << percent << "\n";
+            }
+        }
+        
+        if (outfile.is_open()) {
+            outfile.close();
+        }
+
+        std::priority_queue<std::pair<float, labeltype>> gt2(answers[i]);
         int tmp = recall(result, gt2);
         correct += tmp;
     }
+    // --- 新增：写入 histogram 平均值到文件 ---
+    // std::ofstream histfile("cluster_histogram_per100_sift.txt");
+    // if (histfile.is_open()) {
+    //     size_t max_windows = window_counts.size();
+    //     for (size_t w = 0; w < max_windows; ++w) {
+    //         // 累加第 w 个窗口所有 query 的值
+    //         long long sum = 0;
+    //         int count = 0;
+    //         for (const auto& hist : query_histograms) {
+    //             if (w < hist.size()) {
+    //                 sum += hist[w];
+    //                 count++;
+    //             }
+    //         }
+    //         // 只对有值的窗口求平均
+    //         if (count > 0) {
+    //             histfile << w << "\t" << (double)sum / count << std::endl;
+    //         }
+    //     }
+    //     histfile.close();
+    // } else {
+    //     std::cerr << "Failed to open cluster_histogram_per100_sift.txt for writing" << std::endl;
+    // }
+    // ------------------------------------------------------
 
-    // Print average hops for each rank
-    std::ofstream hop_stats("sift_hop_stats.txt");
-    if (hop_stats.is_open()) {
-        for (int rank = 0; rank < 10000; rank++) {
-            if (hop_counts[rank] > 0) {
-                float avg_hop = (float)hop_sums[rank] / hop_counts[rank];
-                hop_stats << rank << "\t" << avg_hop << endl;
-            }
-        }
-        hop_stats.close();
-    } else {
-        cerr << "Failed to open hop_stats.txt for writing" << endl;
-    }
+    // std::ofstream rank_stats("cluster_rank_access_stats_sift.txt");
+    // if (rank_stats.is_open()) {
+    //     for (const auto& pair : global_cluster_rank_access_count) {
+    //         rank_stats << pair.first << "\t" << pair.second << std::endl;
+    //     }
+    //     rank_stats.close();
+    // } else {
+    //     std::cerr << "Failed to open cluster_rank_access_stats.txt for writing" << std::endl;
+    // }
 
     long double time_us_per_query = total_time / qsize + rotation_time;
-    long double recall = 1.0f * correct / total;
+    long double recall_val = 1.0f * correct / total;
     cout << "---------------ADSampling HNSW------------------------" << endl;
     cout << "ef = " << appr_alg.ef_ << " k = " << k << endl;
-    cout << "Recall = " << recall * 100.0 << "%\t" << endl;
+    cout << "Recall = " << recall_val * 100.0 << "%\t" << endl;
     cout << "QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
     cout << "Total full distance = " << adsampling::tot_full_dist << endl;
     cout << "Pruned by flags = " << adsampling::pruned_by_flags << endl;
@@ -185,7 +243,7 @@ static void test_approx(float *massQ, size_t vecsize, size_t qsize, Hierarchical
 static void test_vs_recall(float *massQ, size_t vecsize, size_t qsize, HierarchicalNSW<float> &appr_alg, size_t vecdim,
                vector<std::priority_queue<std::pair<float, labeltype >>> &answers, size_t k, int adaptive, unsigned *cluster_ids) {
     vector<size_t> efs;
-    efs.push_back(100);
+    efs.push_back(500);
     // efs.push_back(200);
     // efs.push_back(400);
     // efs.push_back(600);
@@ -219,6 +277,7 @@ int main(int argc, char * argv[]) {
         {"result_path",                 required_argument, 0, 'r'},
         {"transformation_path",         required_argument, 0, 't'},
         {"cluster_ids_path",            required_argument, 0, 'l'},
+        {"topk_clusters_path",          required_argument, 0, 'b'},
         // {"flags_path",                  required_argument, 0, 'f'},
         // {"centroid_path",               required_argument, 0, 'c'},
     };
@@ -239,7 +298,7 @@ int main(int argc, char * argv[]) {
     int randomize = 0;
     char topk_clusters_path[256] = "";
     int topk_clusters = 0;
-    int subk=10000;
+    int subk=100;
 
     while(iarg != -1){
         iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:f:c:l:b:h:", longopts, &ind);
@@ -314,13 +373,13 @@ int main(int argc, char * argv[]) {
     HierarchicalNSW<float> *appr_alg = new HierarchicalNSW<float>(&l2space, index_path, centroid_path, false);
 
     // Load flags if provided
-    if (flags_path != "") {
-        appr_alg->loadFlags(flags_path);
-    }
+    // if (flags_path != "") {
+    //     appr_alg->loadFlags(flags_path);
+    // }
 
-    if (topk_clusters_path != "") {
-        appr_alg->loadTopkClusters(topk_clusters_path, topk_clusters);
-    }
+    // if (topk_clusters_path != "") {
+    //     appr_alg->loadTopkClusters(topk_clusters_path, topk_clusters);
+    // }
 
     size_t k = G.d;
 

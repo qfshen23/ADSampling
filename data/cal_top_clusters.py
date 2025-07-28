@@ -63,9 +63,9 @@ if __name__ == '__main__':
     # Parameters
     source = '/data/vector_datasets/'
     datasets = ['sift']
-    K = 16 * 1024  # Total number of clusters
+    K = 256  # Total number of clusters
     batch_size = 2000
-    k = 1024  # Number of top clusters to keep
+    k = 256  # Number of top clusters to keep
 
     for dataset in datasets:
         print(f"\n=== Processing dataset: {dataset} ===")
