@@ -4,10 +4,10 @@ g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/incl
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results
-datasets=('sift')
-C=1024
+datasets=('tiny5m')
+C=2048
 CC=256
-K=10000
+K=10
 refine_num=10000
 k_overlap=64
 randomize=0
@@ -22,7 +22,7 @@ do
     diskK="${result_path}/${data}_IVF${C}_${randomize}_diskK.log"
 
     # clusters_file="${path}/${data}/${data}_top_clusters_${CC}_of_${CC}.ivecs"
-    clusters_file="${path}/${data}/sift_top_clusters_${C}.ivecs"
+    clusters_file="${path}/${data}/${data}_top_clusters_${C}.ivecs"
     top_centroids_file="${path}/${data}/${data}_centroid_${C}.fvecs"
 
     echo "clusters_file: ${clusters_file}"
