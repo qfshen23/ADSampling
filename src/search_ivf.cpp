@@ -28,7 +28,11 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     struct rusage run_start, run_end;
 
     vector<int> nprobes;
-    // nprobes.push_back(5);
+    nprobes.push_back(1);
+    nprobes.push_back(2);
+    nprobes.push_back(3);
+    nprobes.push_back(4);
+    nprobes.push_back(5);
     // nprobes.push_back(10);
     // nprobes.push_back(15);
     // nprobes.push_back(20);
@@ -58,10 +62,10 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     // nprobes.push_back(140);
     // nprobes.push_back(145);
     // nprobes.push_back(150);
-    nprobes.push_back(155);
-    nprobes.push_back(160);
-    nprobes.push_back(165);
-    nprobes.push_back(170);
+    // nprobes.push_back(155);
+    // nprobes.push_back(160);
+    // nprobes.push_back(165);
+    // nprobes.push_back(170);
 
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
