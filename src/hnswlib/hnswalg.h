@@ -317,30 +317,9 @@ namespace hnswlib {
 
             entry_id_ = ep_id;
             pruned_vertices_.clear();
-            entry_ids_.push_back(ep_id);
+            entry_ids_.push_back(ep_id); 
 
-            // Calculate distances to all centroids and store ranks
-            if (has_centroids_) {
-                std::vector<std::pair<dist_t, size_t>> centroid_distances;
-                centroid_distances.reserve(num_centroids_);
-                
-                // Calculate distance to each centroid
-                for (size_t i = 0; i < num_centroids_; i++) {
-                    dist_t dist = fstdistfunc_(data_point, centroids_[i], dist_func_param_);
-                    centroid_distances.emplace_back(dist, i);
-                }
-
-                // Sort by distance to get ranks
-                std::sort(centroid_distances.begin(), centroid_distances.end());
-                
-                // Store ranks in adsampling::cluster_rank
-                adsampling::cluster_rank.clear();
-                adsampling::cluster_rank.resize(num_centroids_);
-                for (size_t i = 0; i < centroid_distances.size(); i++) {
-                    size_t centroid_id = centroid_distances[i].second;
-                    adsampling::cluster_rank[centroid_id] = i;
-                }
-            }
+              
 
             // top_candidates - the result set R
             std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> top_candidates;
@@ -490,7 +469,7 @@ namespace hnswlib {
                 }
 
                 adsampling::out_edge_for_visited_vector.push_back(out_edges);
-            
+                                                                                                                        
                 // std::sort(candidates.begin(), candidates.end());
                 // int candidate_cnt = candidates.size();
                 // if(flag) {
