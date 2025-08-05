@@ -29,7 +29,12 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
 
     vector<pair<int, int>> test_params;
     
-    test_params.push_back({80, 40000});
+    /*
+    50	18000
+    55	22000
+    60	27000
+    */ 
+    test_params.push_back({200, 300000});
 
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);

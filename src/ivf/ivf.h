@@ -340,7 +340,7 @@ ResultHeap IVF::search(
     size_t k_overlap, 
     size_t refine_num
 ) const {
-    //StopW stopw;
+    StopW stopw;
     Result* centroid_dist = new Result[C];
     for(int i = 0; i < C; i++) {
         centroid_dist[i].first = sqr_dist(query, centroids + i * D, D);
@@ -348,7 +348,7 @@ ResultHeap IVF::search(
     }
     adsampling::dist_cnt += C;
     std::partial_sort(centroid_dist, centroid_dist + nprobe, centroid_dist + C);
-    //adsampling::time1 += stopw.getElapsedTimeMicro();
+    adsampling::time1 += stopw.getElapsedTimeMicro();
 
     Result* topk_centroids_dist = new Result[top_centroids_num_];
     for(int i = 0; i < top_centroids_num_; i++) {
@@ -374,7 +374,7 @@ ResultHeap IVF::search(
     
     size_t cur = 0;
 
-    //StopW stopw2;
+    StopW stopw2;
     
     for(int pi = 0; pi < nprobe; ++pi) {
         int cluster_id = centroid_dist[pi].second;
@@ -413,7 +413,7 @@ ResultHeap IVF::search(
         }
     }
 
-    //adsampling::time2 += stopw2.getElapsedTimeMicro();
+    adsampling::time2 += stopw2.getElapsedTimeMicro();
 
     const int MAX_OVERLAP = 64;
     int bucket[MAX_OVERLAP + 1] = {0};
@@ -431,7 +431,7 @@ ResultHeap IVF::search(
         }
     }
 
-    //StopW stopw3;
+    StopW stopw3;
     Result* dist_candidates = new Result[ncan];
     cur = 0;
     size_t selected_count = 0;
@@ -449,7 +449,7 @@ ResultHeap IVF::search(
             }
         }
     }
-    //adsampling::time3 += stopw3.getElapsedTimeMicro();
+    adsampling::time3 += stopw3.getElapsedTimeMicro();
     /*
     bool* is_selected = new bool[ncan];
     cur = 0;
