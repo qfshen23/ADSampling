@@ -147,7 +147,7 @@ float dist_comp(const float& dis, const void *data, const void *query,
 };
 
 __attribute__((optimize("no-tree-vectorize")))
-float sqr_dist(float* a, float* b, int D){
+float sqr_dist(const float* a, const float* b, int D){
     float ret = 0;
     for(int i=0;i!=D;i++){
         float tmp = (*a - *b);
@@ -158,7 +158,7 @@ float sqr_dist(float* a, float* b, int D){
     return ret;
 }
 
-float sqr_distt(float* a, float* b, int D){
+float sqr_distt(const float* a, const float* b, int D){
     adsampling::dist_cnt ++;
     float ret = 0;
     for(int i=0;i!=D;i++){

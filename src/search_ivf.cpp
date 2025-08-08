@@ -34,7 +34,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     55	22000
     60	27000
     */ 
-    test_params.push_back({200, 300000});
+    test_params.push_back({120, 80000});
 
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);

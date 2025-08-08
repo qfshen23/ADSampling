@@ -371,6 +371,7 @@ ResultHeap IVF::search(
         ncan += len[centroid_dist[i].second];
 
     size_t* overlap_ratios = new size_t[ncan];
+    size_t* local_idx_arr  = new size_t[ncan];
     
     size_t cur = 0;
 
@@ -380,6 +381,7 @@ ResultHeap IVF::search(
         int cluster_id = centroid_dist[pi].second;
         for(size_t j = 0; j < len[cluster_id]; ++j) {
             size_t local_idx = start[cluster_id] + j;
+            local_idx_arr[cur] = local_idx;
             uint64_t* vector_clusters = topk_clusters_flat_ + local_idx * num_words;
 
             // uint64_t overlap_bits = vector_clusters[0] & query_bitmasks;
@@ -403,11 +405,11 @@ ResultHeap IVF::search(
                 overlap_count += __builtin_popcountll(overlap3);
             }
             
-            // Handle remaining words
-            for(size_t word_idx = simd_words; word_idx < num_words; word_idx++) {
-                uint64_t overlap_bits = vector_clusters[word_idx] & query_bitmasks[word_idx];
-                overlap_count += __builtin_popcountll(overlap_bits);
-            }
+            // // Handle remaining words
+            // for(size_t word_idx = simd_words; word_idx < num_words; word_idx++) {
+            //     uint64_t overlap_bits = vector_clusters[word_idx] & query_bitmasks[word_idx];
+            //     overlap_count += __builtin_popcountll(overlap_bits);
+            // }
             
             overlap_ratios[cur++] = overlap_count;
         }
@@ -432,56 +434,45 @@ ResultHeap IVF::search(
     }
 
     StopW stopw3;
-    Result* dist_candidates = new Result[ncan];
-    cur = 0;
     size_t selected_count = 0;
-    for(int pi = 0; pi < nprobe; ++pi) {
-        int cluster_id = centroid_dist[pi].second;
-        for(size_t j = 0; j < len[cluster_id]; ++j) {
-            size_t local_idx = start[cluster_id] + j;
-            float overlap_ratio = overlap_ratios[cur];
-            if(overlap_ratio < threshold) {
-                cur ++;
-            } else {
-                float dist = sqr_dist(query, L1_data + local_idx * d, d);
-                dist_candidates[selected_count++] = Result(dist, id[local_idx]);
-                cur++;
-            }
-        }
-    }
-    adsampling::time3 += stopw3.getElapsedTimeMicro();
-    /*
-    bool* is_selected = new bool[ncan];
-    cur = 0;
-    for(int pi = 0; pi < nprobe; ++pi) {
-        int cluster_id = centroid_dist[pi].second;
-        for(size_t j = 0; j < len[cluster_id]; ++j) {
-            size_t local_idx = start[cluster_id] + j;
-            float overlap_ratio = overlap_ratios[cur];
-            is_selected[cur++] = overlap_ratio >= threshold;
+    // pass 1: 紧凑化（可保持很少分支）
+    std::vector<uint32_t> refine_idx;
+    refine_idx.reserve(refine_num);
+    for (uint32_t i = 0; i < ncan; ++i) {
+        if (overlap_ratios[i] >= threshold) {
+            refine_idx.push_back(i);
+            // if (refine_idx.size() == refine_num) break; // 可选提前停止
         }
     }
 
-    StopW stopw3;
-    
-    
-    cur = 0;
-    size_t selected_count = 0;
-    
-    for(int pi = 0; pi < nprobe; ++pi) {
-        int cluster_id = centroid_dist[pi].second;
-        for(size_t j = 0; j < len[cluster_id]; ++j) {
-            if(is_selected[cur]) {
-                size_t local_idx = start[cluster_id] + j;
-                float dist = sqr_dist(query, L1_data + local_idx * d, d);
-                dist_candidates[selected_count++] = Result(dist, id[local_idx]);
-            }
-            cur++;
-        }
+    // pass 2: 只对通过的做距离
+    Result* dist_candidates = new Result[refine_idx.size()];
+    for (uint32_t t = 0; t < refine_idx.size(); ++t) {
+        size_t li = local_idx_arr[refine_idx[t]];
+        // __builtin_prefetch(L1_data + (li + 16)*d, 0, 1);
+        float dist = sqr_dist(query, L1_data + li * d, d);
+        dist_candidates[t] = Result(dist, id[li]);
     }
+    selected_count = refine_idx.size();
 
-    adsampling::time3 += stopw3.getElapsedTimeMicro();
-    */
+    adsampling::time3 += stopw3.getElapsedTimeMicro(); 
+
+    
+    // cur = 0;
+    // for(int pi = 0; pi < nprobe; ++pi) {
+    //     int cluster_id = centroid_dist[pi].second;
+    //     for(size_t j = 0; j < len[cluster_id]; ++j) {
+    //         size_t local_idx = start[cluster_id] + j;
+    //         float overlap_ratio = overlap_ratios[cur];
+    //         if(overlap_ratio < threshold) {
+    //             cur ++;
+    //         } else {
+    //             float dist = sqr_dist(query, L1_data + local_idx * d, d);
+    //             dist_candidates[selected_count++] = Result(dist, id[local_idx]);
+    //             cur++;
+    //         }
+    //     }
+    // }
 
     //StopW stopw4;
     
@@ -504,6 +495,8 @@ ResultHeap IVF::search(
     delete[] overlap_ratios;
     delete[] dist_candidates;
     delete[] query_bitmasks;
+    delete[] topk_centroids_dist;
+    // delete[] local_idx_arr;
     return KNNs;
 }
 
