@@ -71,7 +71,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     // nprobes.push_back(185);
     // nprobes.push_back(190);
     // nprobes.push_back(195);
-    nprobes.push_back(200);
+    nprobes.push_back(120);
 
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
