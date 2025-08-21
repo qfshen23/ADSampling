@@ -5,9 +5,9 @@ g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/incl
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results 
-datasets=('gist')
+datasets=('openai3072')
 C=1024
-K=1
+K=10
 prop=25
 
 for data in "${datasets[@]}"

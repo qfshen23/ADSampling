@@ -28,40 +28,56 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     struct rusage run_start, run_end;
 
     vector<int> nprobes;
+    /*
+        5
+        10
+        15
+        20
+        30
+        50
+        60
+        70
+        80
+        90
+        100
+        110
+        120
+        130
+    */
     // nprobes.push_back(1);
     // nprobes.push_back(2);
     // nprobes.push_back(3);
     // nprobes.push_back(4);
-    // nprobes.push_back(5);
-    // nprobes.push_back(10);
-    // nprobes.push_back(15);
-    // nprobes.push_back(20);
-    // nprobes.push_back(25);
-    // nprobes.push_back(30);
+    nprobes.push_back(5);
+    nprobes.push_back(10);
+    nprobes.push_back(15);
+    nprobes.push_back(20);
+    nprobes.push_back(25);
+    nprobes.push_back(30);
     // nprobes.push_back(35);
     // nprobes.push_back(40);
     // nprobes.push_back(45);
-    // nprobes.push_back(50);
+    nprobes.push_back(50);
     // nprobes.push_back(55);
-    // nprobes.push_back(60);
+    nprobes.push_back(60);
     // nprobes.push_back(65);
     // nprobes.push_back(70);
     // nprobes.push_back(75);
-    // nprobes.push_back(80);
+    nprobes.push_back(80);
     // nprobes.push_back(85);
     // nprobes.push_back(90);
     // nprobes.push_back(95);
-    // nprobes.push_back(100);
+    nprobes.push_back(100);
     // nprobes.push_back(105);
     // nprobes.push_back(110);
     // nprobes.push_back(115);
-    // nprobes.push_back(120);
+    nprobes.push_back(120);
     // nprobes.push_back(125);
     // nprobes.push_back(130);
     // nprobes.push_back(135);
-    // nprobes.push_back(140);
+    nprobes.push_back(140);
     // nprobes.push_back(145);
-    // nprobes.push_back(150);
+    nprobes.push_back(150);
     // nprobes.push_back(155);
     // nprobes.push_back(160);
     // nprobes.push_back(165);
@@ -70,8 +86,6 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     // nprobes.push_back(180);
     // nprobes.push_back(185);
     // nprobes.push_back(190);
-    // nprobes.push_back(195);
-    nprobes.push_back(120);
 
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
