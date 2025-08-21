@@ -371,7 +371,7 @@ ResultHeap IVF::search(
         ncan += len[centroid_dist[i].second];
 
     size_t* overlap_ratios = new size_t[ncan];
-    size_t* local_idx_arr  = new size_t[ncan];
+    // size_t* local_idx_arr  = new size_t[ncan];
     
     size_t cur = 0;
 
@@ -381,7 +381,7 @@ ResultHeap IVF::search(
         int cluster_id = centroid_dist[pi].second;
         for(size_t j = 0; j < len[cluster_id]; ++j) {
             size_t local_idx = start[cluster_id] + j;
-            local_idx_arr[cur] = local_idx;
+            // local_idx_arr[cur] = local_idx;
             uint64_t* vector_clusters = topk_clusters_flat_ + local_idx * num_words;
 
             // uint64_t overlap_bits = vector_clusters[0] & query_bitmasks;
@@ -433,48 +433,50 @@ ResultHeap IVF::search(
         }
     }
 
-    StopW stopw3;
-    size_t selected_count = 0;
-    // pass 1: 紧凑化（可保持很少分支）
-    std::vector<uint32_t> refine_idx;
-    refine_idx.reserve(refine_num);
-    for (uint32_t i = 0; i < ncan; ++i) {
-        if (overlap_ratios[i] >= threshold) {
-            refine_idx.push_back(i);
-            // if (refine_idx.size() == refine_num) break; // 可选提前停止
+    // 第一遍扫描：找到被选中的候选向量
+    std::vector<size_t> selected_indices;
+    selected_indices.reserve(refine_num*10);
+    
+    cur = 0;
+    for(int pi = 0; pi < nprobe; ++pi) {
+        int cluster_id = centroid_dist[pi].second;
+        for(size_t j = 0; j < len[cluster_id]; ++j) {
+            size_t local_idx = start[cluster_id] + j;
+            if(overlap_ratios[cur] >= threshold) {
+                selected_indices.push_back(local_idx);
+            }
+            cur++;
         }
     }
-
-    // pass 2: 只对通过的做距离
-    Result* dist_candidates = new Result[refine_idx.size()];
-    for (uint32_t t = 0; t < refine_idx.size(); ++t) {
-        size_t li = local_idx_arr[refine_idx[t]];
-        // __builtin_prefetch(L1_data + (li + 16)*d, 0, 1);
-        float dist = sqr_dist(query, L1_data + li * d, d);
-        dist_candidates[t] = Result(dist, id[li]);
-    }
-    selected_count = refine_idx.size();
-
-    adsampling::time3 += stopw3.getElapsedTimeMicro(); 
-
     
-    // cur = 0;
-    // for(int pi = 0; pi < nprobe; ++pi) {
-    //     int cluster_id = centroid_dist[pi].second;
-    //     for(size_t j = 0; j < len[cluster_id]; ++j) {
-    //         size_t local_idx = start[cluster_id] + j;
-    //         float overlap_ratio = overlap_ratios[cur];
-    //         if(overlap_ratio < threshold) {
-    //             cur ++;
-    //         } else {
-    //             float dist = sqr_dist(query, L1_data + local_idx * d, d);
-    //             dist_candidates[selected_count++] = Result(dist, id[local_idx]);
-    //             cur++;
-    //         }
-    //     }
-    // }
+    size_t selected_count = selected_indices.size();
 
-    //StopW stopw4;
+    // 分配紧凑的内存用于存储被选中的候选向量数据
+    float* compact_vectors = new float[selected_count * d];
+    size_t* compact_ids = new size_t[selected_count];
+
+    StopW stopw3;
+    
+    // 将被选中的向量数据拷贝到紧凑内存中
+    for(size_t i = 0; i < selected_count; ++i) {
+        size_t local_idx = selected_indices[i];
+        // 拷贝向量数据
+        std::memcpy(compact_vectors + i * d, L1_data + local_idx * d, d * sizeof(float));
+        // 拷贝对应的ID
+        compact_ids[i] = id[local_idx];
+    }
+
+    adsampling::time3 += stopw3.getElapsedTimeMicro();
+    
+    StopW stopw4;
+    // 在紧凑内存上进行距离计算
+    Result* dist_candidates = new Result[selected_count];
+    for(size_t i = 0; i < selected_count; ++i) {
+        float dist = sqr_dist(query, compact_vectors + i * d, d);
+        dist_candidates[i] = Result(dist, compact_ids[i]);
+    }
+
+    adsampling::time4 += stopw4.getElapsedTimeMicro();
     
     adsampling::dist_cnt += selected_count;
 
@@ -496,6 +498,8 @@ ResultHeap IVF::search(
     delete[] dist_candidates;
     delete[] query_bitmasks;
     delete[] topk_centroids_dist;
+    delete[] compact_vectors;
+    delete[] compact_ids;
     // delete[] local_idx_arr;
     return KNNs;
 }

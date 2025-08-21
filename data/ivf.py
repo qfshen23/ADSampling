@@ -5,9 +5,9 @@ import struct
 import os
 
 source = '/data/vector_datasets/'
-datasets = ['gist' , 'sift', 'deep1M']
+datasets = ['openai1536']
 # the number of clusters
-K = 1024 * 16
+K = 1024
 
 def read_fvecs(filename, c_contiguous=True):
     fv = np.fromfile(filename, dtype=np.float32)
@@ -41,24 +41,23 @@ if __name__ == '__main__':
         path = os.path.join(source, dataset)
         data_path = os.path.join(path, f'{dataset}_base.fvecs')
         centroids_path = os.path.join(path, f'{dataset}_centroid_{K}.fvecs')
-        randomzized_cluster_path = os.path.join(path, f"O{dataset}_centroid_{K}.fvecs")
-        transformation_path = os.path.join(path, 'O.fvecs')
+        randomzized_cluster_path = os.path.join(path, f"{dataset}_centroid_{K}.fvecs")
+        # transformation_path = os.path.join(path, 'O.fvecs')
 
         # read data vectors
         X = read_fvecs(data_path)
-        P = read_fvecs(transformation_path)
-        C = read_fvecs(centroids_path)
+        # P = read_fvecs(transformation_path)
+        # C = read_fvecs(centroids_path)
         D = X.shape[1]
         
-        '''
+        
         # cluster data vectors
         index = faiss.index_factory(D, f"IVF{K},Flat")
         index.verbose = True
         index.train(X)
         centroids = index.quantizer.reconstruct_n(0, index.nlist)
         to_fvecs(centroids_path, centroids)
-        '''
 
         # randomized centroids
-        centroids = np.dot(C, P)
-        to_fvecs(randomzized_cluster_path, centroids)
+        # centroids = np.dot(C, P)
+        # to_fvecs(randomzized_cluster_path, centroids)

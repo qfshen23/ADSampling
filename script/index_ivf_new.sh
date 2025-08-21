@@ -1,7 +1,7 @@
 cd ..
 g++ -fopenmp -O3 ./src/index_ivf.cpp -o ./src/index_ivf  -I ./src/ -I /usr/include/eigen3 
-C=4096
-datasets=('gist' 'sift' 'deep1M')
+C=1024
+datasets=('openai1536' 'openai3072')
 
 # prop=50
 
@@ -10,7 +10,7 @@ do
     for adaptive in {0..2}
     do
 
-        if [ $adaptive -ne 2 ];then
+        if [ $adaptive -ne 0 ];then
             echo "Skipping adaptive=${adaptive} for dataset ${data}"
             continue
         fi  

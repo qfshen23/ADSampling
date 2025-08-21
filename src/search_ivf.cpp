@@ -30,12 +30,20 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     vector<pair<int, int>> test_params;
     
     /*
-    50	18000
-    55	22000
-    60	27000
+    45	22000
+    55	26000
+    60	32000
+    70	36000
+    80	42000
+    100	60000
+    120	70000
     */ 
-    test_params.push_back({120, 80000});
-
+    test_params.push_back({45, 22000});
+    test_params.push_back({55, 26000});
+    test_params.push_back({60, 32000});
+    test_params.push_back({70, 36000});
+    test_params.push_back({80, 42000});
+    
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
     if(!fout.is_open()) {
