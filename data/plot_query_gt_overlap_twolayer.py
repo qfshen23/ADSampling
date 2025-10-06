@@ -40,16 +40,15 @@ def compute_recall(selected_vector_ids, gt_vector_ids):
 
 def main():
     # Parameters
-    datasets = ['sift']
+    datasets = ['gist']
     K = 1024
     nprobe = 120
+    gt_nn = 10  # 设置要使用的gt邻居数量
     
     # 配置：每层(query_topk, keep_topn)
     layer_configs = [
-        (4, 100000),   
-        (16, 90000),   
-        (32, 80000),   
-        (64, 60000),
+        (128, 80000),
+        (64, 20000),
     ]
 
     for dataset in datasets:
@@ -68,7 +67,7 @@ def main():
 
         print("Loading data...")
         queries = read_fvecs(query_path)
-        groundtruth = read_ivecs(gt_path)
+        groundtruth = read_ivecs(gt_path)[:, :gt_nn]  # 只取前gt_nn个邻居
         centroids = read_fvecs(centroids_path)
         top_clusters = read_ivecs(top_clusters_path)
         cluster_ids = read_ivecs(cluster_ids_path)
@@ -83,7 +82,7 @@ def main():
         recall_results = []
 
         print("\nComputing multi-layer overlap and recall...")
-        for query_idx in tqdm(range(min(1000, num_queries))):
+        for query_idx in tqdm(range(min(100, num_queries))):
             query = queries[query_idx:query_idx+1]
             distances = np.sum((query - centroids) ** 2, axis=1)
             query_top_clusters = np.argsort(distances)  # 排序得到所有cluster的rank

@@ -2,120 +2,32 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 '''
-top-1														
-dataset	dim	K	nprobe	recall	dco	qps	#atom op	topk-clusters	nprobe	#re-rank vectors	dco	recall	qps	#atom op
-														
-gist	960	1024	10	75.6	14890	133	42883200	64	20	4000	5567	75.4	238	16254816
-			15	83	21881	90	63017280		25	7500	9307	82.5	155	27137872
-			20	86.9	28872	68	83151360		30	10000	11965	86.3	122	34904768
-			25	89.4	35799	55	103101120		35	13000	15174	88.9	98	44257520
-			30	91.6	42717	46	123024960		40	18000	20329	91.6	77	59214608
-			35	93.4	49649	39	142989120		45	21000	23550	93.2	66	68602000
-			40	94.6	56546	34	162852480		50	27000	29743	94.3	53	86548192
-			45	95.6	63380	31	182534400		55	30000	32754	95	49	95329216
-			60	96.7	83819	23	241398720		70	36000	39284	96.3	41	114462640
-			70	97.7	97272	20	280143360		80	42000	45425	97.3	35	132363968
-			90	98.5	124059	15	357289920		100	55000	58991	98.2	28	171862640
-			100	98.8	137297	14	395415360		110	63000	67338	98.6	24	196113808
-			120	99	163545	12	471009600		120	80000	84663	98.8	20	246429776
-														
-sift	128	1024	5	79.4	6464	2646	2482176		10	400	1521	79	3705	671104
-			10	89.91	11773	1455	4520832		15	1100	2324	89.17	2445	1064400
-			15	94.25	17010	1009	6531840		20	3000	4413	94.37	1447	1950368
-			20	95.99	22208	771	8527872		25	5000	6557	96.1	1032	2856832
-			25	96.96	27376	628	10512384		30	7000	8694	97.07	854	3760128
-			30	97.56	32510	530	12483840		35	8000	9765	97.63	749	4253536
-			45	98.54	47744	355	18333696		50	16000	18134	98.56	457	7710976
-			65	98.99	67761	253	26020224		70	25000	27496	98.95	312	11626256
-			80	99.02	82649	205	31737216		80	40000	42686	99.02	242	17697424
+openai-1536	1536	1024	5	80.7	6580	182			15	1000	2250	80.6	326.773
+			10	88	11853	101			20	5000	6589	87.2	139.415
+			15	91	16957	70.6			25	9000	10750	90.2	90.6859
+			20	92.6	22080	54.2			30	11000	12865	91	76.9959
+			30	94.6	32363	37			40	16000	18100	92.2	56.1923
+			50	96.6	52884	22.7			60	25000	27466	94.7	37.8625
+			60	97.5	63169	19			70	30000	32682	95.6	32.1174
+			70	97.7	73406	16.5			80	36000	38778	95.8	27.302
+			80	97.9	83633	14.3			90	41000	43984	96.3	24.1712
+			90	98.1	93844	12.9			100	47000	50318	96.7	21.2398
+			100	98.3	103991	11.7			105	52000	55354	96.9	19.4254
+			110	98.5	114142	10.6			115	56000	59666	97.2	18.0212
+			120	98.8	124335	9.6			125	62000	65965	97.5	16.0896
+			130	98.9	134471	9			135	67000	71104	97.7	14.2087
+													
+													
+openai-3072	3072	1024	5	78.1	6685	90			15	1000	2251	74.3	168.586
+			10	84.9	12053	49.7			20	5500	7143	83.7	66.9886
+			15	89.3	17393	34			25	8500	10299	86.7	48.5222
+			20	91.2	22680	26.4			30	11000	12914	87.5	39.4913
+			30	92.9	33340	18			40	16000	18202	89.6	28.6927
+			50	95.5	54370	11			60	27000	29562	92.5	18.1473
+			60	96.2	64872	9.18			70	32000	34782	93.2	15.5103
+			80	97.2	85943	6.95			90	43000	46186	95	11.8053
+			100	97.9	106966	5.58			105	53000	56538	95.8	9.32982
+			120	98.4	127894	4.68			125	64000	68038	96.3	7.77166
+			140	98.8	148744	4			145	74000	78375	96.9	6.67261
+			150	98.9	159132	3.75			155	80000	84779	97.1	6.12688
 '''
-
-# GIST dataset
-recall1_gist = [75.6, 83.0, 86.9, 89.4, 91.6, 93.4, 94.6, 95.6, 96.7, 97.7, 98.5, 98.8, 99.0]
-qps1_gist = [133, 90, 68, 55, 46, 39, 34, 31, 23, 20, 15, 14, 12]
-dco1_gist = [14890, 21881, 28872, 35799, 42717, 49649, 56546, 63380, 83819, 97272, 124059, 137297, 163545]
-atom1_gist = [42883200, 63017280, 83151360, 103101120, 123024960, 142989120, 162852480, 182534400, 241398720, 280143360, 357289920, 395415360, 471009600]
-
-recall2_gist = [75.4, 82.5, 86.3, 88.9, 91.6, 93.2, 94.3, 95.0, 96.3, 97.3, 98.2, 98.6, 98.8]
-qps2_gist = [238, 155, 122, 98, 77, 66, 53, 49, 41, 35, 28, 24, 20]
-dco2_gist = [5567, 9307, 11965, 15174, 20329, 23550, 29743, 32754, 39284, 45425, 58991, 67338, 84663]
-atom2_gist = [16254816, 27137872, 34904768, 44257520, 59214608, 68602000, 86548192, 95329216, 114462640, 132363968, 171862640, 196113808, 246429776]
-
-# SIFT dataset
-recall1_sift = [79.4, 89.91, 94.25, 95.99, 96.96, 97.56, 98.54, 98.99, 99.02]
-qps1_sift = [2646, 1455, 1009, 771, 628, 530, 355, 253, 205]
-dco1_sift = [6464, 11773, 17010, 22208, 27376, 32510, 47744, 67761, 82649]
-atom1_sift = [2482176, 4520832, 6531840, 8527872, 10512384, 12483840, 18333696, 26020224, 31737216]
-
-recall2_sift = [79.0, 89.17, 94.37, 96.1, 97.07, 97.63, 98.56, 98.95, 99.02]
-qps2_sift = [3705, 2445, 1447, 1032, 854, 749, 457, 312, 242]
-dco2_sift = [1521, 2324, 4413, 6557, 8694, 9765, 18134, 27496, 42686]
-atom2_sift = [671104, 1064400, 1950368, 2856832, 3760128, 4253536, 7710976, 11626256, 17697424]
-
-# Plot for GIST dataset
-plt.figure(figsize=(10, 6))
-plt.plot(recall1_gist, qps1_gist, 'b-o', label='Original')
-plt.plot(recall2_gist, qps2_gist, 'r-o', label='New')
-plt.xlabel('Recall (%)')
-plt.ylabel('QPS (queries/s)')
-plt.title('Recall vs QPS Comparison (GIST)')
-plt.grid(True)
-plt.legend()
-plt.savefig('recall_vs_qps_gist_top1.png', dpi=400)
-plt.close()
-
-plt.figure(figsize=(10, 6))
-plt.plot(recall1_gist, [d/1000 for d in dco1_gist], 'b-o', label='Original')
-plt.plot(recall2_gist, [d/1000 for d in dco2_gist], 'r-o', label='New')
-plt.xlabel('Recall (%)')
-plt.ylabel('Distance Computations (K)')
-plt.title('Recall vs Distance Computations (GIST)')
-plt.grid(True)
-plt.legend()
-plt.savefig('recall_vs_dco_gist_top1.png', dpi=400)
-plt.close()
-
-plt.figure(figsize=(10, 6))
-plt.plot(recall1_gist, [a/1000000 for a in atom1_gist], 'b-o', label='Original')
-plt.plot(recall2_gist, [a/1000000 for a in atom2_gist], 'r-o', label='New')
-plt.xlabel('Recall (%)')
-plt.ylabel('Atomic Operations (M)')
-plt.title('Recall vs Atomic Operations (GIST)')
-plt.grid(True)
-plt.legend()
-plt.savefig('recall_vs_atom_gist_top1.png', dpi=400)
-plt.close()
-
-# Plot for SIFT dataset
-plt.figure(figsize=(10, 6))
-plt.plot(recall1_sift, qps1_sift, 'b-o', label='Original')
-plt.plot(recall2_sift, qps2_sift, 'r-o', label='New')
-plt.xlabel('Recall (%)')
-plt.ylabel('QPS (queries/s)')
-plt.title('Recall vs QPS Comparison (SIFT)')
-plt.grid(True)
-plt.legend()
-plt.savefig('recall_vs_qps_sift_top1.png', dpi=400)
-plt.close()
-
-plt.figure(figsize=(10, 6))
-plt.plot(recall1_sift, [d/1000 for d in dco1_sift], 'b-o', label='Original')
-plt.plot(recall2_sift, [d/1000 for d in dco2_sift], 'r-o', label='New')
-plt.xlabel('Recall (%)')
-plt.ylabel('Distance Computations (K)')
-plt.title('Recall vs Distance Computations (SIFT)')
-plt.grid(True)
-plt.legend()
-plt.savefig('recall_vs_dco_sift_top1.png', dpi=400)
-plt.close()
-
-plt.figure(figsize=(10, 6))
-plt.plot(recall1_sift, [a/1000000 for a in atom1_sift], 'b-o', label='Original')
-plt.plot(recall2_sift, [a/1000000 for a in atom2_sift], 'r-o', label='New')
-plt.xlabel('Recall (%)')
-plt.ylabel('Atomic Operations (M)')
-plt.title('Recall vs Atomic Operations (SIFT)')
-plt.grid(True)
-plt.legend()
-plt.savefig('recall_vs_atom_sift_top1.png', dpi=400)
-plt.close()

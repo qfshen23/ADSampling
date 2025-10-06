@@ -46,12 +46,12 @@ def compute_statistics(overlap_ratios):
 def main():
     datasets = ['sift']
     K = 1024
-    k_overlap_near = 64
-    k_overlap_far = 16
+    k_overlap_near = 32
+    k_overlap_far = 64
     nprobe = 120
     top_x_value = 80000  # 从 far-overlap 最小中保留这么多
     top_y_values = [20000, 30000, 40000, 50000, 60000]  # 从 top_x_value 中选出这些用于 recall
-    gt_neighbors = 10000
+    gt_neighbors = 10
 
     for dataset in datasets:
         print(f"\n=== Processing dataset: {dataset} ===")
@@ -79,7 +79,7 @@ def main():
         recall_results = {y: [] for y in top_y_values}
 
         print("\nFiltering by far-overlap, then ranking by near-overlap...")
-        for query_idx in tqdm(range(min(1000, num_queries))):
+        for query_idx in tqdm(range(min(100, num_queries))):
             query = queries[query_idx:query_idx+1]
             distances = np.sum((query - centroids) ** 2, axis=1)
             nearest_clusters = np.argsort(distances)[:nprobe]

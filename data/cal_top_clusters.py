@@ -62,10 +62,10 @@ def compute_and_save_top_clusters(X, centroids_path, output_path, batch_size=100
 if __name__ == '__main__':
     # Parameters
     source = '/data/vector_datasets/'
-    datasets = ['openai1536']
+    datasets = ['openai1536', 'openai3072']
     K = 1024  # Total number of clusters
     batch_size = 2000
-    k = 256  # Number of top clusters to keep
+    k = 1024  # Number of top clusters to keep
 
     for dataset in datasets:
         print(f"\n=== Processing dataset: {dataset} ===")
