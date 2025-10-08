@@ -357,33 +357,20 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
 
     adsampling::time1 += stopw.getElapsedTimeMicro();
     
-    // Calculate number of base vectors in full nprobe
     size_t ncan = 0;
     for(int i=0;i<nprobe;i++)
         ncan += len[centroid_dist[i].second];
     
-    // Calculate half nprobe (round up for odd numbers)
-    size_t half_nprobe = (nprobe + 1) / 2;
-    
-    // Calculate number of base vectors in half nprobe
-    size_t ncan_half = 0;
-    for(int i=0;i<half_nprobe;i++)
-        ncan_half += len[centroid_dist[i].second];
-    
-    // Update pruning rate statistics
-    adsampling::total_base_vectors_full_nprobe += ncan;
-    adsampling::total_base_vectors_half_nprobe += ncan_half;
-    
-    adsampling::all_dimension += 1ll * ncan_half * D;
+    adsampling::all_dimension += 1ll * ncan * D;
 
-    if(d == D) adsampling::tot_dimension += 1ll * ncan_half * D;
-    else if(d > 0) adsampling::tot_dimension += 1ll * ncan_half * d;
+    if(d == D) adsampling::tot_dimension += 1ll * ncan * D;
+    else if(d > 0) adsampling::tot_dimension += 1ll * ncan * d;
 
-    float * dist = new float [ncan_half];
-    Result * candidates = new Result [ncan_half];
-    int * obj= new int [ncan_half];
+    float * dist = new float [ncan];
+    Result * candidates = new Result [ncan];
+    int * obj= new int [ncan];
 
-    adsampling::dist_cnt += 1ll * ncan_half;
+    adsampling::dist_cnt += 1ll * ncan;
     
     size_t cur = 0;
 
@@ -394,8 +381,7 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     // For IVF+ (i.e., apply ADSampling without optimizing data layout), it should be 0.
     // For IVF++ (i.e., apply ADSampling with optimizing data layout), it should be delta_d (i.e., 32). 
     cur = -1;
-    // Only search the first half of nprobe (rounded up for odd numbers)
-    for(int i=0;i<half_nprobe;i++){
+    for(int i=0;i<nprobe;i++){
         int cluster_id = centroid_dist[i].second;
         for(int j=0;j<len[cluster_id];j++) {
 
@@ -441,7 +427,6 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
         //adsampling::time4 += stopw.getElapsedTimeMicro();
     } else if(d < D) {  // d < D indicates ADSampling with and without cache-level optimization
         auto cur_dist = dist;
-        // 
         for(int i = 0;i < nprobe;i++){
             int cluster_id = centroid_dist[i].second;
             for(int j=0;j<len[cluster_id];j++){

@@ -6,7 +6,6 @@
 
 #include <iostream>
 #include <fstream>
-#include <iomanip>
 
 #include <ctime>
 #include <cmath>
@@ -28,26 +27,9 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     float sys_t, usr_t, usr_t_sum = 0, total_time=0, search_time=0;
     struct rusage run_start, run_end;
 
-    /*
-10
-15
-20
-25
-30
-35
-40
-50
-70
-90
-100
-120
-140
-160
-    */
     vector<int> nprobes = {10, 15, 20, 25, 30, 35, 40, 50, 70, 90, 100, 120, 140, 160};
     
     
-
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
     if(!fout.is_open()) {
@@ -103,12 +85,6 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         cout << "time1: " << adsampling::time1 << ", time2: " << adsampling::time2 << endl;
         // cout << "average count of exact distance vectors: " << adsampling::cntt / Q.n << endl;
         cout << "average count of exact srq_dist calls: " << adsampling::dist_cnt / Q.n << endl;
-        // Calculate and output pruning rate
-        double pruning_rate = 0.0;
-        if(adsampling::total_base_vectors_full_nprobe > 0) {
-            pruning_rate = 1.0 - (double)adsampling::total_base_vectors_half_nprobe / adsampling::total_base_vectors_full_nprobe;
-        }
-        cout << "pruning rate: " << std::fixed << std::setprecision(2) << pruning_rate * 100.0 << "% (searched " << adsampling::total_base_vectors_half_nprobe << " out of " << adsampling::total_base_vectors_full_nprobe << " base vectors)" << endl;
         // cout << "pruned rate: " << 1 - (adsampling::tot_dimension + (double)0.0) / adsampling::all_dimension << endl;
     }
 #ifdef PLOT_DISK_K
