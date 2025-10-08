@@ -26,8 +26,10 @@ char diskK_path[256] = "";
 void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int k){
     float sys_t, usr_t, usr_t_sum = 0, total_time=0, search_time=0;
     struct rusage run_start, run_end;
+    /*
 
-    vector<int> nprobes = {10, 15, 20, 25, 30, 35, 40, 50, 70, 90, 100, 120, 140, 160};
+    */
+    vector<int> nprobes = {5, 10, 15, 20, 25, 30, 45, 65, 80};
     
     
 #ifdef PLOT_DISK_K
@@ -86,6 +88,9 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         // cout << "average count of exact distance vectors: " << adsampling::cntt / Q.n << endl;
         cout << "average count of exact srq_dist calls: " << adsampling::dist_cnt / Q.n << endl;
         // cout << "pruned rate: " << 1 - (adsampling::tot_dimension + (double)0.0) / adsampling::all_dimension << endl;
+        #ifdef COUNT_DIMENSION
+        cout << "total dimension: " << adsampling::tot_dimension << endl;
+        #endif
     }
 #ifdef PLOT_DISK_K
     fout.close();
