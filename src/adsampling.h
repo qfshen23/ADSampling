@@ -30,6 +30,10 @@ unsigned long long cntt = 0;
 unsigned long long dist_cnt = 0;
 std::vector<float> diskK_vec;
 
+// Pruning rate statistics
+unsigned long long total_base_vectors_full_nprobe = 0;
+unsigned long long total_base_vectors_half_nprobe = 0;
+
 void clear() {
     distance_time = 0;
     tot_dimension = 0;
@@ -39,6 +43,8 @@ void clear() {
     time1 = time2 = time3 = time4 = 0;
     cntt = dist_cnt = 0;
     diskK_vec.clear();
+    total_base_vectors_full_nprobe = 0;
+    total_base_vectors_half_nprobe = 0;
 }
 
 // The hypothesis testing checks whether \sqrt{D/d} dis' > (1 +  epsilon0 / \sqrt{d}) * r.

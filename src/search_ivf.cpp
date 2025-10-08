@@ -6,6 +6,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <iomanip>
 
 #include <ctime>
 #include <cmath>
@@ -27,65 +28,25 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     float sys_t, usr_t, usr_t_sum = 0, total_time=0, search_time=0;
     struct rusage run_start, run_end;
 
-    vector<int> nprobes;
     /*
-        5
-        10
-        15
-        20
-        30
-        50
-        60
-        70
-        80
-        90
-        100
-        110
-        120
-        130
+10
+15
+20
+25
+30
+35
+40
+50
+70
+90
+100
+120
+140
+160
     */
-    // nprobes.push_back(1);
-    // nprobes.push_back(2);
-    // nprobes.push_back(3);
-    // nprobes.push_back(4);
-    nprobes.push_back(5);
-    nprobes.push_back(10);
-    nprobes.push_back(15);
-    nprobes.push_back(20);
-    nprobes.push_back(25);
-    nprobes.push_back(30);
-    // nprobes.push_back(35);
-    // nprobes.push_back(40);
-    // nprobes.push_back(45);
-    nprobes.push_back(50);
-    // nprobes.push_back(55);
-    nprobes.push_back(60);
-    // nprobes.push_back(65);
-    // nprobes.push_back(70);
-    // nprobes.push_back(75);
-    nprobes.push_back(80);
-    // nprobes.push_back(85);
-    // nprobes.push_back(90);
-    // nprobes.push_back(95);
-    nprobes.push_back(100);
-    // nprobes.push_back(105);
-    // nprobes.push_back(110);
-    // nprobes.push_back(115);
-    nprobes.push_back(120);
-    // nprobes.push_back(125);
-    // nprobes.push_back(130);
-    // nprobes.push_back(135);
-    nprobes.push_back(140);
-    // nprobes.push_back(145);
-    nprobes.push_back(150);
-    // nprobes.push_back(155);
-    // nprobes.push_back(160);
-    // nprobes.push_back(165);
-    // nprobes.push_back(170);
-    // nprobes.push_back(175);
-    // nprobes.push_back(180);
-    // nprobes.push_back(185);
-    // nprobes.push_back(190);
+    vector<int> nprobes = {10, 15, 20, 25, 30, 35, 40, 50, 70, 90, 100, 120, 140, 160};
+    
+    
 
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
@@ -142,6 +103,12 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         cout << "time1: " << adsampling::time1 << ", time2: " << adsampling::time2 << endl;
         // cout << "average count of exact distance vectors: " << adsampling::cntt / Q.n << endl;
         cout << "average count of exact srq_dist calls: " << adsampling::dist_cnt / Q.n << endl;
+        // Calculate and output pruning rate
+        double pruning_rate = 0.0;
+        if(adsampling::total_base_vectors_full_nprobe > 0) {
+            pruning_rate = 1.0 - (double)adsampling::total_base_vectors_half_nprobe / adsampling::total_base_vectors_full_nprobe;
+        }
+        cout << "pruning rate: " << std::fixed << std::setprecision(2) << pruning_rate * 100.0 << "% (searched " << adsampling::total_base_vectors_half_nprobe << " out of " << adsampling::total_base_vectors_full_nprobe << " base vectors)" << endl;
         // cout << "pruned rate: " << 1 - (adsampling::tot_dimension + (double)0.0) / adsampling::all_dimension << endl;
     }
 #ifdef PLOT_DISK_K
