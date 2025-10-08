@@ -62,17 +62,17 @@ def compute_and_save_top_clusters(X, centroids_path, output_path, batch_size=100
 if __name__ == '__main__':
     # Parameters
     source = '/data/vector_datasets/'
-    datasets = ['openai1536', 'openai3072']
-    K = 1024  # Total number of clusters
+    datasets = ['tiny5m']
+    K = 2048  # Total number of clusters
     batch_size = 2000
-    k = 1024  # Number of top clusters to keep
+    k = 2048  # Number of top clusters to keep
 
     for dataset in datasets:
         print(f"\n=== Processing dataset: {dataset} ===")
         path = os.path.join(source, dataset)
-        data_path = os.path.join(path, f'{dataset}_base.fvecs')
-        centroids_path = os.path.join(path, f'{dataset}_centroid_{K}.fvecs')
-        output_path = os.path.join(path, f'{dataset}_top_clusters_{k}_of_{K}.ivecs')
+        data_path = os.path.join(path, f'O{dataset}_base.fvecs')
+        centroids_path = os.path.join(path, f'O{dataset}_centroid_{K}.fvecs')
+        output_path = os.path.join(path, f'O{dataset}_top_clusters_{k}_of_{K}.ivecs')
 
         # clear the output file
         if os.path.exists(output_path):

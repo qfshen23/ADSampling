@@ -1,6 +1,6 @@
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
-// #define COUNT_DIMENSION
+#define COUNT_DIMENSION
 // #define PLOT_DISK_K
 // #define COUNT_DIST_TIME
 
@@ -30,33 +30,37 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     vector<pair<int, int>> test_params;
     
     /*
-        15	1000
-        20	6000
-        25	8000
-        30	11000
-        35	14000
-        40	16000
-        60	27000
-        70	32000
-        90	42000
-        110	52000
-        125	62000
-        145	73000
-        155	78000
+20	7000
+25	14000
+30	17000
+35	23000
+40	30000
+45	38000
+50	46000
+60	70000
+80	100000
+100	120000
+110	140000
+130	160000
+145	180000
+160	220000
     */ 
-    test_params.push_back({15, 1000});
-    test_params.push_back({20, 6000});
-    test_params.push_back({25, 8000});
-    test_params.push_back({30, 11000});
-    test_params.push_back({35, 14000});
-    test_params.push_back({40, 16000});
-    test_params.push_back({60, 27000});
-    test_params.push_back({70, 32000});
-    test_params.push_back({90, 42000});
-    test_params.push_back({110, 52000});
-    test_params.push_back({125, 62000});
-    test_params.push_back({145, 73000});
-    test_params.push_back({155, 78000});
+    test_params.push_back({20, 7000});
+    test_params.push_back({25, 14000});
+    test_params.push_back({30, 17000});
+    test_params.push_back({35, 23000});
+    test_params.push_back({40, 30000});
+    test_params.push_back({45, 38000});
+    test_params.push_back({50, 46000});
+    test_params.push_back({60, 70000});
+    test_params.push_back({80, 100000});
+    test_params.push_back({100, 120000});
+    test_params.push_back({110, 140000});
+    test_params.push_back({130, 160000});
+    test_params.push_back({145, 180000});
+    test_params.push_back({160, 220000});
+    
+    
 
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
@@ -78,7 +82,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
             adsampling::diskK_vec.clear();
 #endif
             GetCurTime( &run_start);
-            ResultHeap KNNs = ivf.search(Q.data + i * Q.d, k, nprobe, 0, k_overlap, curr_refine_num);
+            ResultHeap KNNs = ivf.search(Q.data + i * Q.d, k, nprobe, std::numeric_limits<float>::max(), k_overlap, curr_refine_num);
             GetCurTime( &run_end);
             GetTime(&run_start, &run_end, &usr_t, &sys_t);
             total_time += usr_t * 1e6;
@@ -112,6 +116,9 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         cout << "Time = " << time_us_per_query << " us \t QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
         cout << "total distance calculation: " << adsampling::dist_cnt << endl;
         cout << "time1: " << adsampling::time1 << ", time2: " << adsampling::time2 << ", time3: " << adsampling::time3 << ", time4: " << adsampling::time4 << endl;
+        #ifdef COUNT_DIMENSION
+        cout << "total dimension: " << adsampling::tot_dimension << endl;
+        #endif
     }
 #ifdef PLOT_DISK_K
     fout.close();

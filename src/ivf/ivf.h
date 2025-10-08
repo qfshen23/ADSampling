@@ -165,7 +165,7 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) 
     // ------------------------------
     //  3) 根据 adaptive 参数确定分块维度 d
     // ------------------------------
-    if(adaptive == 1)      d = 64;  // IVF++ - optimize cache (d = 32 by default)
+    if(adaptive == 2)      d = 32;  // IVF++ - optimize cache (d = 32 by default)
     else if(adaptive == 0) d = D;    // IVF   - plain scan
     else                   d = 0;    // IVF+  - plain ADSampling
 
@@ -348,6 +348,7 @@ ResultHeap IVF::search(
     }
     adsampling::dist_cnt += C;
     std::partial_sort(centroid_dist, centroid_dist + nprobe, centroid_dist + C);
+    adsampling::tot_dimension += nprobe * D;
     // adsampling::time1 += stopw.getElapsedTimeMicro();
 
     Result* topk_centroids_dist = new Result[top_centroids_num_];
@@ -375,7 +376,7 @@ ResultHeap IVF::search(
     
     size_t cur = 0;
 
-    //StopW stopw2;
+    // StopW stopw2;
     
     for(int pi = 0; pi < nprobe; ++pi) {
         int cluster_id = centroid_dist[pi].second;
@@ -474,23 +475,47 @@ ResultHeap IVF::search(
         }
     }
 
-    //StopW stopw4;
-    
-    adsampling::dist_cnt += selected_count;
-
-    std::partial_sort(
-        dist_candidates,
-        dist_candidates + k,
-        dist_candidates + selected_count
-    );
-
-    //adsampling::time4 += stopw4.getElapsedTimeMicro();
+    adsampling::tot_dimension += selected_count * d;
 
     ResultHeap KNNs;
-    for(size_t i = 0; i < k; i++) {
-        KNNs.emplace(dist_candidates[i].first, dist_candidates[i].second);
-    }
 
+    if(d == D) {
+        adsampling::dist_cnt += selected_count;
+
+        std::partial_sort(
+            dist_candidates,
+            dist_candidates + k,
+            dist_candidates + selected_count
+        );
+
+        for(size_t i = 0; i < k; i++) {
+            KNNs.emplace(dist_candidates[i].first, dist_candidates[i].second);
+        }
+    } else {
+        int selected_idx = 0;
+        cur = 0;
+        for(int pi = 0; pi < nprobe; ++pi) {
+            int cluster_id = centroid_dist[pi].second;
+            for(size_t j = 0; j < len[cluster_id]; ++j) {
+                size_t local_idx = start[cluster_id] + j;
+                float overlap_ratio = overlap_ratios[cur];
+                if(overlap_ratio < threshold) {
+                    cur ++;
+                } else {
+                    float tmp_dist = adsampling::dist_comp(distK, res_data + local_idx * (D-d), query + d, dist_candidates[selected_idx ++].first, d);
+                    if(tmp_dist > 0){
+                        KNNs.emplace(tmp_dist, id[local_idx]);
+                        if(KNNs.size() > k) KNNs.pop();
+                    }
+                    if(KNNs.size() == k && KNNs.top().first < distK){
+                        distK = KNNs.top().first;
+                    }
+                    cur ++;
+                }
+            }
+        }
+    }
+    
     delete[] centroid_dist;
     delete[] overlap_ratios;
     delete[] dist_candidates;
