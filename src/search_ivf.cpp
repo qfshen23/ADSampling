@@ -33,16 +33,14 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
 25
 30
 35
-40
+45
 50
+60
 70
 90
-100
-120
-140
-160
+110
     */
-    vector<int> nprobes = {10, 15, 20, 25, 30, 35, 40, 50, 70, 90, 100, 120, 140, 160};
+    vector<int> nprobes = {10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 90, 110};
     
     
 #ifdef PLOT_DISK_K
