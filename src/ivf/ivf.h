@@ -371,27 +371,29 @@ ResultHeap IVF::search(
     for(int i=0;i<nprobe;i++)
         ncan += len[centroid_dist[i].second];
 
+    // 预分配数组，避免重复分配
+    Result* dist_candidates = new Result[refine_num * 10];
     size_t* overlap_ratios = new size_t[ncan];
-    // size_t* local_idx_arr  = new size_t[ncan];
+    size_t* local_indices = new size_t[ncan];  // 存储local_idx以避免重复计算
+    size_t* selected_indices = new size_t[refine_num * 10];  // 存储通过筛选的indices
     
     size_t cur = 0;
+    size_t selected_count = 0;
 
     // StopW stopw2;
     
+    // 合并overlap计算和第一次筛选，减少一次遍历
     for(int pi = 0; pi < nprobe; ++pi) {
         int cluster_id = centroid_dist[pi].second;
         for(size_t j = 0; j < len[cluster_id]; ++j) {
             size_t local_idx = start[cluster_id] + j;
-            // local_idx_arr[cur] = local_idx;
+            local_indices[cur] = local_idx;  // 存储local_idx
             uint64_t* vector_clusters = topk_clusters_flat_ + local_idx * num_words;
-
-            // uint64_t overlap_bits = vector_clusters[0] & query_bitmasks;
-            // int overlap_count = __builtin_popcountll(overlap_bits);
 
             size_t overlap_count = 0;
             
-            // Use SIMD for vectorized bitwise operations and popcount
-            size_t simd_words = (num_words / 4) * 4; // Process 4 uint64_t at a time
+            // 优化位运算：处理完整的SIMD words
+            size_t simd_words = (num_words / 4) * 4;
             
             // SIMD processing for aligned words
             for(size_t word_idx = 0; word_idx < simd_words; word_idx += 4) {
@@ -406,11 +408,11 @@ ResultHeap IVF::search(
                 overlap_count += __builtin_popcountll(overlap3);
             }
             
-            // // Handle remaining words
-            // for(size_t word_idx = simd_words; word_idx < num_words; word_idx++) {
-            //     uint64_t overlap_bits = vector_clusters[word_idx] & query_bitmasks[word_idx];
-            //     overlap_count += __builtin_popcountll(overlap_bits);
-            // }
+            // 处理剩余的words
+            for(size_t word_idx = simd_words; word_idx < num_words; word_idx++) {
+                uint64_t overlap_bits = vector_clusters[word_idx] & query_bitmasks[word_idx];
+                overlap_count += __builtin_popcountll(overlap_bits);
+            }
             
             overlap_ratios[cur++] = overlap_count;
         }
@@ -435,43 +437,27 @@ ResultHeap IVF::search(
     }
 
     // StopW stopw3;
-    size_t selected_count = 0;
-    // pass 1: 紧凑化（可保持很少分支）
-    // std::vector<uint32_t> refine_idx;
-    // refine_idx.reserve(refine_num);
-    // for (uint32_t i = 0; i < ncan; ++i) {
-    //     if (overlap_ratios[i] >= threshold) {
-    //         refine_idx.push_back(i);
-    //         // if (refine_idx.size() == refine_num) break; // 可选提前停止
-    //     }
-    // }
-
-    // // pass 2: 只对通过的做距离
-    // Result* dist_candidates = new Result[refine_idx.size()];
-    // for (uint32_t t = 0; t < refine_idx.size(); ++t) {
-    //     size_t li = local_idx_arr[refine_idx[t]];
-    //     // __builtin_prefetch(L1_data + (li + 16)*d, 0, 1);
-    //     float dist = sqr_dist(query, L1_data + li * d, d);
-    //     dist_candidates[t] = Result(dist, id[li]);
-    // }
-    // selected_count = refine_idx.size();
-
-    // adsampling::time3 += stopw3.getElapsedTimeMicro(); 
-
-    Result* dist_candidates = new Result[refine_num * 10];
-    cur = 0;
-    for(int pi = 0; pi < nprobe; ++pi) {
-        int cluster_id = centroid_dist[pi].second;
-        for(size_t j = 0; j < len[cluster_id]; ++j) {
-            size_t local_idx = start[cluster_id] + j;
-            float overlap_ratio = overlap_ratios[cur];
-            if(overlap_ratio < threshold) {
-                cur ++;
-            } else {
-                float dist = sqr_dist(query, L1_data + local_idx * d, d);
-                dist_candidates[selected_count++] = Result(dist, id[local_idx]);
-                cur++;
+    // 第二次遍历：只计算通过threshold的候选点距离，同时记录索引
+    // 优化：提前终止条件，当找到足够多的候选点时停止
+    for(size_t i = 0; i < ncan && selected_count < refine_num * 10; ++i) {
+        if(overlap_ratios[i] >= threshold) {
+            size_t local_idx = local_indices[i];
+            selected_indices[selected_count] = i;  // 记录原始索引
+            
+            // 预取下一个通过threshold的向量数据
+            if(selected_count + 1 < refine_num * 10) {
+                for(size_t next_i = i + 1; next_i < ncan && next_i < i + 8; ++next_i) {
+                    if(overlap_ratios[next_i] >= threshold) {
+                        __builtin_prefetch(L1_data + local_indices[next_i] * d, 0, 1);
+                        break;
+                    }
+                }
             }
+            
+            float dist = sqr_dist(query, L1_data + local_idx * d, d);
+            dist_candidates[selected_count].first = dist;
+            dist_candidates[selected_count].second = id[local_idx];
+            selected_count++;
         }
     }
 
@@ -482,42 +468,43 @@ ResultHeap IVF::search(
     if(d == D) {
         adsampling::dist_cnt += selected_count;
 
-        std::partial_sort(
-            dist_candidates,
-            dist_candidates + k,
-            dist_candidates + selected_count
-        );
-
-        for(size_t i = 0; i < k; i++) {
-            KNNs.emplace(dist_candidates[i].first, dist_candidates[i].second);
+        // 只有当selected_count > k时才需要排序，否则直接全部加入
+        if(selected_count > k) {
+            std::partial_sort(
+                dist_candidates,
+                dist_candidates + k,
+                dist_candidates + selected_count
+            );
+            for(size_t i = 0; i < k; i++) {
+                KNNs.emplace(dist_candidates[i].first, dist_candidates[i].second);
+            }
+        } else {
+            for(size_t i = 0; i < selected_count; i++) {
+                KNNs.emplace(dist_candidates[i].first, dist_candidates[i].second);
+            }
         }
     } else {
-        int selected_idx = 0;
-        cur = 0;
-        for(int pi = 0; pi < nprobe; ++pi) {
-            int cluster_id = centroid_dist[pi].second;
-            for(size_t j = 0; j < len[cluster_id]; ++j) {
-                size_t local_idx = start[cluster_id] + j;
-                float overlap_ratio = overlap_ratios[cur];
-                if(overlap_ratio < threshold) {
-                    cur ++;
-                } else {
-                    float tmp_dist = adsampling::dist_comp(distK, res_data + local_idx * (D-d), query + d, dist_candidates[selected_idx ++].first, d);
-                    if(tmp_dist > 0){
-                        KNNs.emplace(tmp_dist, id[local_idx]);
-                        if(KNNs.size() > k) KNNs.pop();
-                    }
-                    if(KNNs.size() == k && KNNs.top().first < distK){
-                        distK = KNNs.top().first;
-                    }
-                    cur ++;
-                }
+        // 优化两阶段处理：直接使用已存储的selected_indices
+        for(size_t i = 0; i < selected_count; ++i) {
+            size_t original_idx = selected_indices[i];
+            size_t local_idx = local_indices[original_idx];
+            size_t target_id = dist_candidates[i].second;
+            
+            float tmp_dist = adsampling::dist_comp(distK, res_data + local_idx * (D-d), query + d, dist_candidates[i].first, d);
+            if(tmp_dist > 0){
+                KNNs.emplace(tmp_dist, target_id);
+                if(KNNs.size() > k) KNNs.pop();
+            }
+            if(KNNs.size() == k && KNNs.top().first < distK){
+                distK = KNNs.top().first;
             }
         }
     }
     
     delete[] centroid_dist;
     delete[] overlap_ratios;
+    delete[] local_indices;
+    delete[] selected_indices;
     delete[] dist_candidates;
     delete[] query_bitmasks;
     delete[] topk_centroids_dist;
