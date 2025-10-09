@@ -7,12 +7,12 @@ index_path=/data/tmp/ivf
 result_path=./results 
 datasets=('gist')
 C=1024
-K=10
+K=1
 prop=25
 
 for data in "${datasets[@]}"
 do
-    for randomize in {0..2} # 0 - IVF, 1 - IVF++, 2 - IVF+
+    for randomize in {0..2} # 0 - IVF, 1 - IVF+, 2 - IVF++
     do
         if [ $randomize -ne 1 ];then
             echo "Skipping adaptive=${randomize} for dataset ${data}"

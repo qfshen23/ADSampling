@@ -137,7 +137,7 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) 
     // ------------------------------
     //  3) 根据 adaptive 参数确定分块维度 d
     // ------------------------------
-    if(adaptive == 1)      d = 64;  // IVF++ - optimize cache (d = 32 by default)
+    if(adaptive == 2)      d = 32;  // IVF++ - optimize cache (d = 32 by default)
     else if(adaptive == 0) d = D;    // IVF   - plain scan
     else                   d = 0;    // IVF+  - plain ADSampling
 
@@ -299,11 +299,11 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, const Matrix<i
     }
 
     if (adaptive == 1)
-        d = 32;
+        d = 0;
     else if (adaptive == 0)
         d = D;
     else
-        d = 0;
+        d = 32;
 
     L1_data = new float[N * d + 10];
     res_data = new float[N * (D - d) + 10];

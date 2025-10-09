@@ -1,6 +1,6 @@
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
-// #define COUNT_DIMENSION
+#define COUNT_DIMENSION
 // #define PLOT_DISK_K
 // #define COUNT_DIST_TIME
 
@@ -27,20 +27,18 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     float sys_t, usr_t, usr_t_sum = 0, total_time=0, search_time=0;
     struct rusage run_start, run_end;
     /*
+5
 10
 15
 20
 25
 30
 35
+40
 45
 50
-60
-70
-90
-110
     */
-    vector<int> nprobes = {10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 90, 110};
+    vector<int> nprobes = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50};
     
     
 #ifdef PLOT_DISK_K
