@@ -27,9 +27,22 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     float sys_t, usr_t, usr_t_sum = 0, total_time=0, search_time=0;
     struct rusage run_start, run_end;
     /*
-
+10
+15
+20
+25
+30
+35
+40
+50
+70
+90
+100
+120
+140
+160
     */
-    vector<int> nprobes = {5, 10, 15, 20, 25, 30, 45, 65, 80};
+    vector<int> nprobes = {10, 15, 20, 25, 30, 35, 40, 50, 70, 90, 100, 120, 140, 160};
     
     
 #ifdef PLOT_DISK_K
