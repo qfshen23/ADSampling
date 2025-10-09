@@ -4,13 +4,13 @@ g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/incl
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results
-datasets=('tiny5m')
-C=2048
+datasets=('sift')
+C=1024
 CC=256
-K=10
+K=1
 refine_num=10000
 k_overlap=64
-randomize=2
+randomize=1
 
 for data in "${datasets[@]}"
 do

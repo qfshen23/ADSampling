@@ -40,7 +40,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     80	100000
     100	120000
     110	140000
-    130	160000
+    130	160000-
     145	180000
     160	220000
     */ 

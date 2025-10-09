@@ -1,7 +1,7 @@
 cd ..
 g++ -fopenmp -O3 ./src/index_ivf.cpp -o ./src/index_ivf  -I ./src/ -I /usr/include/eigen3 
-C=1024
-datasets=('sift' 'gist')
+C=2048
+datasets=('tiny5m')
 
 for data in "${datasets[@]}"
 do  
@@ -33,7 +33,7 @@ do
 
         training="${data_path}/${data}_groundtruth.ivecs"
 
-        # 0 - IVF, 1 - IVF++, 2 - IVF+
+        # 0 - IVF, 1 - IVF+, 2 - IVF++
         # index_file="${index_path}/${data}_ivf_${C}_${adaptive}_reorder.index"
         index_file="${index_path}/${data}_ivf_${C}_${adaptive}.index"
 

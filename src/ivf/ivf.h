@@ -281,12 +281,12 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, const Matrix<i
         }
     }
 
-    if (adaptive == 1)
-        d = 32;
+    if (adaptive == 2)
+        d = 32;  // IVF++ - optimize cache (d = 32 by default)
     else if (adaptive == 0)
-        d = D;
+        d = D;   // IVF   - plain scan
     else
-        d = 0;
+        d = 0;   // IVF+  - plain ADSampling
 
     L1_data = new float[N * d + 10];
     res_data = new float[N * (D - d) + 10];
