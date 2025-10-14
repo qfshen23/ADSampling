@@ -419,14 +419,14 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
 
     // d == D indicates FDScanning. 
     if(d == D){  // here, it should originally be d == D
-        //StopW stopw = StopW();
+        // StopW stopw = StopW();
         
         std::partial_sort(candidates, candidates + k, candidates + cur);
         
         for(int i=0;i < k;i++){
             KNNs.emplace(candidates[i].first, candidates[i].second);
         }
-        //adsampling::time4 += stopw.getElapsedTimeMicro();
+        // adsampling::time4 += stopw.getElapsedTimeMicro();
     } else if(d < D) {  // d < D indicates ADSampling with and without cache-level optimization
         auto cur_dist = dist;
         for(int i = 0;i < nprobe;i++){

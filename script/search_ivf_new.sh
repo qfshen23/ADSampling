@@ -5,7 +5,7 @@ g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/incl
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results 
-datasets=('deep10m')
+datasets=('spacev10m')
 C=4096
 K=10
 prop=25
