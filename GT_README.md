@@ -46,9 +46,9 @@ g++ -std=c++17 -O3 -march=native -mtune=native -fopenmp \
 ### 完整参数
 ```bash
 ./compute_gt \
-    --base /data/vector_datasets/deep10m/deep10m_base.fvecs \
-    --query /data/vector_datasets/deep10m/deep10m_query.fvecs \
-    --output /data/vector_datasets/deep10m/deep10m_groundtruth.ivecs \
+    --base /data/vector_datasets/spacev10m/spacev10m_base.fvecs \
+    --query /data/vector_datasets/spacev10m/spacev10m_query.fvecs \
+    --output /data/vector_datasets/spacev10m/spacev10m_groundtruth.ivecs \
     --topk 100 \
     --threads 32
 ```
