@@ -24,7 +24,7 @@ do
     
     if [[ -f "$base_file" && -f "$query_file" ]]; then
         echo "开始计算 $dataset groundtruth..."
-        time ./compute_gt -b "$base_file" -q "$query_file" -o "$output_file" -k 100 -t 16
+        time ./compute_gt -b "$base_file" -q "$query_file" -o "$output_file" -k 100 -t 32
         
         if [ $? -eq 0 ]; then
             echo "✓ $dataset 完成"
