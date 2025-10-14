@@ -1,6 +1,6 @@
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
-#define COUNT_DIMENSION
+// #define COUNT_DIMENSION
 // #define PLOT_DISK_K
 // #define COUNT_DIST_TIME
 
@@ -38,7 +38,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
 45
 50
     */
-    vector<int> nprobes = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50};
+    vector<int> nprobes = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100};
     
     
 #ifdef PLOT_DISK_K
