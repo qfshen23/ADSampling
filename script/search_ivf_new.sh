@@ -7,7 +7,7 @@ index_path=/data/tmp/ivf
 result_path=./results 
 datasets=('deep10m')
 C=4096
-K=1
+K=10
 prop=25
 
 for data in "${datasets[@]}"
