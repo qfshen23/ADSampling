@@ -18,7 +18,7 @@ struct Result {
     int id;
     
     bool operator<(const Result& other) const {
-        return dist > other.dist;  // 最小堆
+        return dist < other.dist;  // 最大堆：距离大的在堆顶
     }
 };
 
@@ -303,7 +303,7 @@ public:
             for (int i = start; i < end; i++) {
                 float dist = compute_distance(query, &base_data[i * dim], dim);
                 
-                if (global_heap.size() < k) {
+                if (global_heap.size() < static_cast<size_t>(k)) {
                     global_heap.push({dist, i});
                 } else if (dist < global_heap.top().dist) {
                     global_heap.pop();

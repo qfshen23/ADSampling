@@ -46,11 +46,11 @@ g++ -std=c++17 -O3 -march=native -mtune=native -fopenmp \
 ### 完整参数
 ```bash
 ./compute_gt \
-    --base /data/vector_datasets/sift/sift_base.fvecs \
-    --query /data/vector_datasets/sift/sift_query.fvecs \
-    --output sift_groundtruth.ivecs \
+    --base /data/vector_datasets/deep10m/deep10m_base.fvecs \
+    --query /data/vector_datasets/deep10m/deep10m_query.fvecs \
+    --output /data/vector_datasets/deep10m/deep10m_groundtruth.ivecs \
     --topk 100 \
-    --threads 8
+    --threads 32
 ```
 
 ### 参数说明
