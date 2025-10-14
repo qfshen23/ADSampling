@@ -19,6 +19,34 @@ def read_fvecs(filename, c_contiguous=True):
         fv = fv.copy()
     return fv
 
+def read_bvecs(filename, c_contiguous=True):
+    bv = np.fromfile(filename, dtype=np.uint8)
+    if bv.size == 0:
+        return np.zeros((0, 0))
+    dim = bv.view(np.int32)[0]
+    assert dim > 0
+    bv = bv.reshape(-1, dim + 4)  # 4 bytes for dimension + dim bytes for vector
+    # Check dimension consistency
+    for i in range(bv.shape[0]):
+        d = bv[i, :4].view(np.int32)[0]
+        if d != dim:
+            raise IOError("Non-uniform vector sizes in " + filename)
+    bv = bv[:, 4:]  # Skip the 4-byte dimension header
+    # Convert to float32 for compatibility with faiss
+    bv = bv.astype(np.float32)
+    if c_contiguous:
+        bv = bv.copy()
+    return bv
+
+def read_vectors(filename, c_contiguous=True):
+    """Automatically detect and read .fvecs or .bvecs files"""
+    if filename.endswith('.fvecs'):
+        return read_fvecs(filename, c_contiguous)
+    elif filename.endswith('.bvecs'):
+        return read_bvecs(filename, c_contiguous)
+    else:
+        raise ValueError(f"Unsupported file format: {filename}. Only .fvecs and .bvecs are supported.")
+
 def process_batch(args):
     batch, centroids, k = args
     # Compute distances to all centroids
@@ -35,7 +63,7 @@ def process_batch(args):
 
 def compute_and_save_top_clusters(X, centroids_path, output_path, batch_size=10000):
     print("Loading centroids...")
-    centroids = read_fvecs(centroids_path)
+    centroids = read_vectors(centroids_path)
     
     print("Computing and saving top clusters...")
     num_workers = cpu_count()
@@ -62,24 +90,45 @@ def compute_and_save_top_clusters(X, centroids_path, output_path, batch_size=100
 if __name__ == '__main__':
     # Parameters
     source = '/data/vector_datasets/'
-    datasets = ['tiny5m']
-    K = 2048  # Total number of clusters
+    datasets = ['spacev10m', 'bigann10m']
+    K = 4096  # Total number of clusters
     batch_size = 2000
-    k = 2048  # Number of top clusters to keep
+    k = 1024  # Number of top clusters to keep
 
     for dataset in datasets:
         print(f"\n=== Processing dataset: {dataset} ===")
         path = os.path.join(source, dataset)
-        data_path = os.path.join(path, f'O{dataset}_base.fvecs')
-        centroids_path = os.path.join(path, f'O{dataset}_centroid_{K}.fvecs')
-        output_path = os.path.join(path, f'O{dataset}_top_clusters_{k}_of_{K}.ivecs')
+        
+        # Auto-detect file format (.fvecs or .bvecs)
+        data_path_fvecs = os.path.join(path, f'{dataset}_base.fvecs')
+        data_path_bvecs = os.path.join(path, f'{dataset}_base.bvecs')
+        if os.path.exists(data_path_fvecs):
+            data_path = data_path_fvecs
+        elif os.path.exists(data_path_bvecs):
+            data_path = data_path_bvecs
+        else:
+            raise FileNotFoundError(f"Neither {data_path_fvecs} nor {data_path_bvecs} found")
+        
+        centroids_path_fvecs = os.path.join(path, f'{dataset}_centroid_{K}.fvecs')
+        centroids_path_bvecs = os.path.join(path, f'{dataset}_centroid_{K}.bvecs')
+        if os.path.exists(centroids_path_fvecs):
+            centroids_path = centroids_path_fvecs
+        elif os.path.exists(centroids_path_bvecs):
+            centroids_path = centroids_path_bvecs
+        else:
+            raise FileNotFoundError(f"Neither {centroids_path_fvecs} nor {centroids_path_bvecs} found")
+        
+        output_path = os.path.join(path, f'{dataset}_top_clusters_{k}_of_{K}.ivecs')
+
+        print(f"Data file: {data_path}")
+        print(f"Centroids file: {centroids_path}")
 
         # clear the output file
         if os.path.exists(output_path):
             os.remove(output_path)
 
         # Load base vectors
-        X = read_fvecs(data_path)
+        X = read_vectors(data_path)
         
         # Compute and save top clusters
         compute_and_save_top_clusters(X, centroids_path, output_path, batch_size)

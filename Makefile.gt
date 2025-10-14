@@ -1,0 +1,64 @@
+# Makefile for high-performance groundtruth computation
+CXX = g++
+CXXFLAGS = -std=c++17 -O3 -march=native -mtune=native -fopenmp
+CXXFLAGS += -Wall -Wextra -DNDEBUG
+CXXFLAGS += -mavx2 -mfma  # Enable AVX2 and FMA instructions
+
+# Source and target
+SRC = src/compute_gt.cpp
+TARGET = compute_gt
+
+# Default target
+all: $(TARGET)
+
+# Build the main target
+$(TARGET): $(SRC)
+	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SRC)
+	@echo "Built $(TARGET) successfully!"
+	@echo "Usage: ./$(TARGET) -b base.fvecs -q query.fvecs -o groundtruth.ivecs -k 100"
+
+# Debug version
+debug: CXXFLAGS = -std=c++17 -O0 -g -fopenmp -Wall -Wextra -mavx2 -mfma
+debug: $(TARGET)
+
+# Clean
+clean:
+	rm -f $(TARGET)
+
+# Test with sample data (if available)
+test: $(TARGET)
+	@echo "Testing with sample data..."
+	@if [ -f "/data/vector_datasets/sift/sift_base.fvecs" ] && [ -f "/data/vector_datasets/sift/sift_query.fvecs" ]; then \
+		echo "Running test on SIFT dataset..."; \
+		time ./$(TARGET) -b /data/vector_datasets/sift/sift_base.fvecs \
+		                 -q /data/vector_datasets/sift/sift_query.fvecs \
+		                 -o sift_groundtruth_test.ivecs \
+		                 -k 100 -t 8; \
+	else \
+		echo "SIFT dataset not found, skipping test"; \
+	fi
+
+# Benchmark different configurations
+benchmark: $(TARGET)
+	@echo "Running benchmarks..."
+	@echo "1 thread:"
+	@time ./$(TARGET) -b /data/vector_datasets/sift/sift_base.fvecs -q /data/vector_datasets/sift/sift_query.fvecs -o /tmp/gt_1t.ivecs -k 100 -t 1
+	@echo "4 threads:"
+	@time ./$(TARGET) -b /data/vector_datasets/sift/sift_base.fvecs -q /data/vector_datasets/sift/sift_query.fvecs -o /tmp/gt_4t.ivecs -k 100 -t 4
+	@echo "8 threads:"
+	@time ./$(TARGET) -b /data/vector_datasets/sift/sift_base.fvecs -q /data/vector_datasets/sift/sift_query.fvecs -o /tmp/gt_8t.ivecs -k 100 -t 8
+
+# Install (copy to bin directory)
+install: $(TARGET)
+	cp $(TARGET) /usr/local/bin/
+
+# Show compiler and system info
+info:
+	@echo "Compiler: $(CXX)"
+	@echo "Flags: $(CXXFLAGS)"
+	@echo "CPU info:"
+	@lscpu | grep -E "(Model name|CPU\(s\)|Thread|Core|Socket)"
+	@echo "SIMD support:"
+	@grep -o -E "(sse|avx|avx2|fma)" /proc/cpuinfo | sort | uniq
+
+.PHONY: all debug clean test benchmark install info

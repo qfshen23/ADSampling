@@ -29,37 +29,31 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     vector<pair<int, int>> test_params;
     
     /*
-    20	7000
-    25	14000
-    30	17000
-    35	23000
-    40	30000
-    45	38000
-    50	46000
-    60	70000
-    80	100000
-    100	120000
-    110	140000
-    130	160000-
-    145	180000
-    160	220000
+20	4000
+25	7000
+30	10000
+35	14000
+40	17000
+45	22000
+55	26000
+60	32000
+70	36000
+80	42000
+100	60000
+120	70000
     */ 
-    test_params.push_back({20, 7000});
-    test_params.push_back({25, 14000});
-    test_params.push_back({30, 17000});
-    test_params.push_back({35, 23000});
-    test_params.push_back({40, 30000});
-    test_params.push_back({45, 38000});
-    test_params.push_back({50, 46000});
-    test_params.push_back({60, 70000});
-    test_params.push_back({80, 100000});
-    test_params.push_back({100, 120000});
-    test_params.push_back({110, 140000});
-    test_params.push_back({130, 160000});
-    test_params.push_back({145, 180000});
-    test_params.push_back({160, 220000});
-    
-
+    test_params.push_back({20, 4000});
+    test_params.push_back({25, 7000});
+    test_params.push_back({30, 10000});
+    test_params.push_back({35, 14000});
+    test_params.push_back({40, 17000});
+    test_params.push_back({45, 22000});
+    test_params.push_back({55, 26000});
+    test_params.push_back({60, 32000});
+    test_params.push_back({70, 36000});
+    test_params.push_back({80, 42000});
+    test_params.push_back({100, 60000});
+    test_params.push_back({120, 70000});
     
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
