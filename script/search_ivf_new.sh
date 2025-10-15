@@ -4,12 +4,11 @@ g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/incl
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results
-datasets=('deep10m')
+datasets=('bigann10m')
 C=4096
 CC=512
 ACTUAL_C=512  # C': actual number of clusters stored per vector in the file
-K=1
-refine_num=10000
+K=10
 k_overlap=64
 randomize=0
 
@@ -28,5 +27,5 @@ do
 
     echo "clusters_file: ${clusters_file}"
 
-    ./src/search_ivf -d ${randomize} -n ${data} -i ${index} -q ${query} -g ${gnd} -r ${res} -t ${trans} -k ${K} -a ${diskK} -o ${k_overlap} -c ${refine_num} -f ${CC} -b ${clusters_file} -h ${top_centroids_file} -x ${ACTUAL_C}
+    ./src/search_ivf -d ${randomize} -n ${data} -i ${index} -q ${query} -g ${gnd} -r ${res} -t ${trans} -k ${K} -a ${diskK} -o ${k_overlap} -f ${CC} -b ${clusters_file} -h ${top_centroids_file} -x ${ACTUAL_C}
 done

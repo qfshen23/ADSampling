@@ -30,7 +30,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     
     /*
     */ 
-    test_params.push_back({10, 4000});
+    test_params.push_back({18, 8000});
     
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
@@ -218,11 +218,18 @@ int main(int argc, char * argv[]) {
     ivf.load(index_path);
 
     if (topk_clusters_path[0] != '\0') {
-        ivf.setTopkCentroidsNum(cc);
-        ivf.loadTopkCentroids(top_centroids_path);
+        // 设置 top centroids 数量
+        if (cc > 0) {
+            ivf.setTopkCentroidsNum(cc);
+        }
         
-        // 如果提供了 actual_c 参数，使用它；否则使用 cc（向后兼容）
-        size_t c_prime = (actual_c > 0) ? actual_c : cc;
+        // 加载 top centroids
+        if (top_centroids_path[0] != '\0') {
+            ivf.loadTopkCentroids(top_centroids_path);
+        }
+        
+        // 如果提供了 actual_c 参数，使用它；否则使用 0（表示使用原始 ivecs 格式）
+        size_t c_prime = (actual_c > 0) ? actual_c : 0;
         ivf.loadTopkClusters(topk_clusters_path, k_overlap, c_prime);
         ivf.flattenTopkClusters();
     }

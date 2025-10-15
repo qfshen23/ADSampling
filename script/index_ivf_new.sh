@@ -8,7 +8,7 @@ do
     for adaptive in {0..2}
     do
 
-        if [ $adaptive -ne 2 ];then
+        if [ $adaptive -ne 0 ];then
             echo "Skipping adaptive=${adaptive} for dataset ${data}"
             continue
         fi  

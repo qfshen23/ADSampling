@@ -576,6 +576,12 @@ void IVF::loadTopkClusters(const char* filename, size_t k_overlap, size_t actual
         throw std::runtime_error(std::string("Cannot open topk clusters file for reading: ") + filename);
     }
 
+    // 如果没有设置 top_centroids_num_，使用 C（总聚类数）
+    if (top_centroids_num_ == 0) {
+        top_centroids_num_ = C;
+        std::cerr << "Warning: top_centroids_num_ not set, using C=" << C << std::endl;
+    }
+
     int cluster_flag_width = (top_centroids_num_ + 63) / 64;
     topk_clusters_ = new uint64_t*[N];
     for (size_t i = 0; i < N; i++) {
@@ -585,26 +591,27 @@ void IVF::loadTopkClusters(const char* filename, size_t k_overlap, size_t actual
 
     size_t vec_index = 0;
 
-    // 新文件格式：每个向量存储 actual_c 个聚类ID
-    while (vec_index < N) {
+    // 文件格式：标准 ivecs 格式 [num_clusters] [id1] [id2] ... [id_n]
+    while (input.good() && vec_index < N) {
+        int num_clusters;
+        input.read(reinterpret_cast<char*>(&num_clusters), sizeof(int));
+        
+        if (!input.good()) break;
+        
+        if (num_clusters <= 0 || num_clusters > (int)C * 2) {
+            throw std::runtime_error("Invalid number of clusters in topk cluster file: " + 
+                                   std::to_string(num_clusters) + " at vector " + std::to_string(vec_index));
+        }
+
         if (vec_index >= N) {
             throw std::runtime_error("Top-k cluster file has more entries than base vectors");
         }
 
-        std::vector<int> cluster_ids(actual_c);
-        input.read(reinterpret_cast<char*>(cluster_ids.data()), sizeof(int) * actual_c);
-        
-        // 检查是否读取成功
-        if (input.gcount() != sizeof(int) * actual_c) {
-            if (input.eof() && vec_index == N - 1) {
-                // 最后一个向量，可能是文件结束
-                break;
-            }
-            throw std::runtime_error("Failed to read cluster IDs from file");
-        }
+        std::vector<int> cluster_ids(num_clusters);
+        input.read(reinterpret_cast<char*>(cluster_ids.data()), sizeof(int) * num_clusters);
 
         // Only take the first k_overlap clusters
-        size_t clusters_to_process = std::min(k_overlap, actual_c);
+        size_t clusters_to_process = std::min(k_overlap, (size_t)num_clusters);
         
         // Map only the nearest k_overlap cluster_ids to bitmask
         for (size_t i = 0; i < clusters_to_process; i++) {
