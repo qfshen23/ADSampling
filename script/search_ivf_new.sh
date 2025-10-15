@@ -7,7 +7,7 @@ index_path=/data/tmp/ivf
 result_path=./results 
 datasets=('spacev10m')
 C=4096
-K=10
+K=1
 prop=25
 
 for data in "${datasets[@]}"
