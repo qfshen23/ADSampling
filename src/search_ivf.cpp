@@ -26,27 +26,10 @@ char diskK_path[256] = "";
 void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int k){
     float sys_t, usr_t, usr_t_sum = 0, total_time=0, search_time=0;
     struct rusage run_start, run_end;
-    /*
-5
-10
-15
-20
-25
-30
-40
-50
-60
-70
-90
-110
-150
-180
-240
-300
-360
-    */
+
+    
     // vector<int> nprobes = {5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 90, 110, 150, 180, 240, 300, 360};
-    vector<int> nprobes = {70, 90, 110, 150, 180, 240, 300, 360};
+    vector<int> nprobes = {150, 180, 240, 300, 360};
     
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
