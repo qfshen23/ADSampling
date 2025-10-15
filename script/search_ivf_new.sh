@@ -6,7 +6,7 @@ path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results 
 datasets=('spacev10m')
-C=4096
+C=2048
 K=1
 prop=25
 
@@ -19,7 +19,7 @@ do
             continue
         fi
 
-        res="${result_path}/${data}_IVF${C}_${randomize}.log"
+        res="${result_path}/${data}_IVF${C}_${randomize}-tmp.log"
         # index="${index_path}/${data}/${data}_ivf_${C}_${randomize}_${prop}.index"
         index="${index_path}/${data}/${data}_ivf_${C}_${randomize}.index"
         # index="${index_path}/${data}/${data}_ivf_${C}_${randomize}_reorder.index"

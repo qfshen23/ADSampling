@@ -516,4 +516,3 @@ void IVF::load(char * filename){
     
     input.close();
 }
-
