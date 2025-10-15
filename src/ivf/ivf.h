@@ -44,6 +44,7 @@ public:
     uint64_t** topk_clusters_;
     uint64_t* topk_clusters_flat_;
     size_t topk_clusters_k_;
+    size_t actual_clusters_per_vector_; // C': actual number of clusters stored per vector
 
     // Top centroids data
     float* top_centroids_;
@@ -57,7 +58,7 @@ public:
     ResultHeap search(float* query, size_t k, size_t nprobe, float distK = std::numeric_limits<float>::max(), size_t k_overlap = 0, size_t refine_num = 0) const;
     void save(char* filename);
     void load(char* filename);
-    void loadTopkClusters(const char* filename, size_t k_overlap);
+    void loadTopkClusters(const char* filename, size_t k_overlap, size_t actual_c);
     void flattenTopkClusters();
     void loadTopkCentroids(const char* filename);
     void setTopkCentroidsNum(size_t num);
@@ -73,6 +74,7 @@ IVF::IVF(){
     L1_data = res_data = centroids = NULL;
     topk_clusters_ = NULL;
     topk_clusters_k_ = 0;
+    actual_clusters_per_vector_ = 0;
     top_centroids_ = NULL;
     top_centroids_num_ = 0;
 }
@@ -86,6 +88,7 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) 
     // Initialize topk_clusters_ member variables
     topk_clusters_ = NULL;
     topk_clusters_k_ = 0;
+    actual_clusters_per_vector_ = 0;
     
     // Initialize top_centroids_ member variables
     top_centroids_ = NULL;
@@ -203,6 +206,7 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, const Matrix<i
     // Initialize topk_clusters_ member variables
     topk_clusters_ = NULL;
     topk_clusters_k_ = 0;
+    actual_clusters_per_vector_ = 0;
 
     // Initialize top_centroids_ member variables
     top_centroids_ = NULL;
@@ -563,43 +567,53 @@ void IVF::load(char * filename){
     input.close();
 }
 
-void IVF::loadTopkClusters(const char* filename, size_t k_overlap) {
+void IVF::loadTopkClusters(const char* filename, size_t k_overlap, size_t actual_c) {
     topk_clusters_k_ = k_overlap;
+    actual_clusters_per_vector_ = actual_c;
 
     std::ifstream input(filename, std::ios::binary);
     if (!input.is_open()) {
         throw std::runtime_error(std::string("Cannot open topk clusters file for reading: ") + filename);
     }
 
-    int num_clusters = top_centroids_num_;
-    size_t vec_index = 0;
-
-    int cluster_flag_width = (num_clusters + 63) / 64;
+    int cluster_flag_width = (top_centroids_num_ + 63) / 64;
     topk_clusters_ = new uint64_t*[N];
     for (size_t i = 0; i < N; i++) {
         topk_clusters_[i] = new uint64_t[cluster_flag_width];
+        std::fill(topk_clusters_[i], topk_clusters_[i] + cluster_flag_width, 0);
     }
 
-    while (input.read(reinterpret_cast<char*>(&num_clusters), sizeof(int))) {
-        if (num_clusters <= 0) {
-            throw std::runtime_error("Invalid number of clusters in topk cluster file");
-        }
+    size_t vec_index = 0;
 
+    // 新文件格式：每个向量存储 actual_c 个聚类ID
+    while (vec_index < N) {
         if (vec_index >= N) {
             throw std::runtime_error("Top-k cluster file has more entries than base vectors");
         }
 
-        std::vector<int> cluster_ids(num_clusters);
-        input.read(reinterpret_cast<char*>(cluster_ids.data()), sizeof(int) * num_clusters);
-
-        // Only take the first topk clusters
-        size_t clusters_to_process = std::min(k_overlap, (size_t)num_clusters);
+        std::vector<int> cluster_ids(actual_c);
+        input.read(reinterpret_cast<char*>(cluster_ids.data()), sizeof(int) * actual_c);
         
-        // Map only the nearest topk cluster_ids to bitmask
+        // 检查是否读取成功
+        if (input.gcount() != sizeof(int) * actual_c) {
+            if (input.eof() && vec_index == N - 1) {
+                // 最后一个向量，可能是文件结束
+                break;
+            }
+            throw std::runtime_error("Failed to read cluster IDs from file");
+        }
+
+        // Only take the first k_overlap clusters
+        size_t clusters_to_process = std::min(k_overlap, actual_c);
+        
+        // Map only the nearest k_overlap cluster_ids to bitmask
         for (size_t i = 0; i < clusters_to_process; i++) {
             int cluster_id = cluster_ids[i];
-            if (cluster_id < 0 || cluster_id >= num_clusters) {
-                throw std::runtime_error("Cluster ID out of range");
+            if (cluster_id < 0 || cluster_id >= (int)top_centroids_num_) {
+                std::cerr << "Warning: Cluster ID " << cluster_id 
+                          << " out of range [0, " << top_centroids_num_ 
+                          << ") for vector " << vec_index << std::endl;
+                continue;
             }
             size_t word = cluster_id / 64;
             size_t bit = cluster_id % 64;
@@ -615,6 +629,11 @@ void IVF::loadTopkClusters(const char* filename, size_t k_overlap) {
     }
 
     input.close();
+    
+    std::cerr << "Loaded topk clusters: N=" << N 
+              << ", actual_c=" << actual_c 
+              << ", k_overlap=" << k_overlap 
+              << ", top_centroids_num=" << top_centroids_num_ << std::endl;
 }
 
 void IVF::flattenTopkClusters() {

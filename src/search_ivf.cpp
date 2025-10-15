@@ -30,7 +30,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     
     /*
     */ 
-    test_params.push_back({10, 8500});
+    test_params.push_back({10, 4000});
     
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
@@ -120,6 +120,7 @@ int main(int argc, char * argv[]) {
         {"topk_clusters_path",          required_argument, 0, 'b'},
         {"cc",                          required_argument, 0, 'f'},
         {"top_centroids_path",          required_argument, 0, 'h'},
+        {"actual_c",                    required_argument, 0, 'x'},
     };
 
     int ind;
@@ -138,9 +139,10 @@ int main(int argc, char * argv[]) {
     int k_overlap = 0;
     int refine_num = 0;
     int cc = 0;
+    int actual_c = 0;  // C': actual number of clusters stored per vector
     char top_centroids_path[256] = "";
     while(iarg != -1) {
-        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:a:o:c:b:f:h:", longopts, &ind);
+        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:a:o:c:b:f:h:x:", longopts, &ind);
         switch (iarg){
             case 'd':
                 if(optarg)randomize = atoi(optarg);
@@ -190,6 +192,9 @@ int main(int argc, char * argv[]) {
             case 'h':
                 if(optarg)strcpy(top_centroids_path, optarg);
                 break;
+            case 'x':
+                if(optarg)actual_c = atoi(optarg);
+                break;
         }
     }
     
@@ -212,10 +217,13 @@ int main(int argc, char * argv[]) {
     IVF ivf;
     ivf.load(index_path);
 
-    if (topk_clusters_path != "") {
+    if (topk_clusters_path[0] != '\0') {
         ivf.setTopkCentroidsNum(cc);
         ivf.loadTopkCentroids(top_centroids_path);
-        ivf.loadTopkClusters(topk_clusters_path, k_overlap);
+        
+        // 如果提供了 actual_c 参数，使用它；否则使用 cc（向后兼容）
+        size_t c_prime = (actual_c > 0) ? actual_c : cc;
+        ivf.loadTopkClusters(topk_clusters_path, k_overlap, c_prime);
         ivf.flattenTopkClusters();
     }
     test(Q, G, ivf, subk, k_overlap, refine_num);

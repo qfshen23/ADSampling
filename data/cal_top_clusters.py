@@ -18,8 +18,6 @@ def read_fvecs(filename, c_contiguous=True):
     if c_contiguous:
         fv = fv.copy()
     return fv
-
-def read_bvecs(filename, c_contiguous=True):
     bv = np.fromfile(filename, dtype=np.uint8)
     if bv.size == 0:
         return np.zeros((0, 0))
@@ -39,14 +37,8 @@ def read_bvecs(filename, c_contiguous=True):
     return bv
 
 def read_vectors(filename, c_contiguous=True):
-    """Automatically detect and read .fvecs or .bvecs files"""
-    if filename.endswith('.fvecs'):
-        return read_fvecs(filename, c_contiguous)
-    elif filename.endswith('.bvecs'):
-        return read_bvecs(filename, c_contiguous)
-    else:
-        raise ValueError(f"Unsupported file format: {filename}. Only .fvecs and .bvecs are supported.")
-
+    return read_fvecs(filename, c_contiguous)
+    
 def process_batch(args):
     batch, centroids, k = args
     # Compute distances to all centroids
@@ -90,10 +82,10 @@ def compute_and_save_top_clusters(X, centroids_path, output_path, batch_size=100
 if __name__ == '__main__':
     # Parameters
     source = '/data/vector_datasets/'
-    datasets = ['spacev10m', 'bigann10m']
+    datasets = ['spacev10m', 'bigann10m', 'deep10m']
     K = 4096  # Total number of clusters
     batch_size = 2000
-    k = 1024  # Number of top clusters to keep
+    k = 512  # Number of top clusters to keep
 
     for dataset in datasets:
         print(f"\n=== Processing dataset: {dataset} ===")
@@ -101,22 +93,10 @@ if __name__ == '__main__':
         
         # Auto-detect file format (.fvecs or .bvecs)
         data_path_fvecs = os.path.join(path, f'{dataset}_base.fvecs')
-        data_path_bvecs = os.path.join(path, f'{dataset}_base.bvecs')
-        if os.path.exists(data_path_fvecs):
-            data_path = data_path_fvecs
-        elif os.path.exists(data_path_bvecs):
-            data_path = data_path_bvecs
-        else:
-            raise FileNotFoundError(f"Neither {data_path_fvecs} nor {data_path_bvecs} found")
+        data_path = data_path_fvecs
         
         centroids_path_fvecs = os.path.join(path, f'{dataset}_centroid_{K}.fvecs')
-        centroids_path_bvecs = os.path.join(path, f'{dataset}_centroid_{K}.bvecs')
-        if os.path.exists(centroids_path_fvecs):
-            centroids_path = centroids_path_fvecs
-        elif os.path.exists(centroids_path_bvecs):
-            centroids_path = centroids_path_bvecs
-        else:
-            raise FileNotFoundError(f"Neither {centroids_path_fvecs} nor {centroids_path_bvecs} found")
+        centroids_path = centroids_path_fvecs
         
         output_path = os.path.join(path, f'{dataset}_top_clusters_{k}_of_{K}.ivecs')
 

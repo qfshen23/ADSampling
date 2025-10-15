@@ -6,7 +6,8 @@ index_path=/data/tmp/ivf
 result_path=./results
 datasets=('deep10m')
 C=4096
-CC=1024
+CC=512
+ACTUAL_C=512  # C': actual number of clusters stored per vector in the file
 K=1
 refine_num=10000
 k_overlap=64
@@ -21,11 +22,11 @@ do
     trans="${path}/${data}/O.fvecs"
     diskK="${result_path}/${data}_IVF${C}_${randomize}_diskK.log"
 
-    clusters_file="${path}/${data}/${data}_top_clusters_${CC}_of_${C}.ivecs"
+    clusters_file="${path}/${data}/${data}_top_clusters_${ACTUAL_C}_of_${C}.ivecs"
     # clusters_file="${path}/${data}/${data}_top_clusters_${C}.ivecs"
     top_centroids_file="${path}/${data}/${data}_centroid_${C}.fvecs"
 
     echo "clusters_file: ${clusters_file}"
 
-    ./src/search_ivf -d ${randomize} -n ${data} -i ${index} -q ${query} -g ${gnd} -r ${res} -t ${trans} -k ${K} -a ${diskK} -o ${k_overlap} -c ${refine_num} -f ${CC} -b ${clusters_file} -h ${top_centroids_file}
+    ./src/search_ivf -d ${randomize} -n ${data} -i ${index} -q ${query} -g ${gnd} -r ${res} -t ${trans} -k ${K} -a ${diskK} -o ${k_overlap} -c ${refine_num} -f ${CC} -b ${clusters_file} -h ${top_centroids_file} -x ${ACTUAL_C}
 done
