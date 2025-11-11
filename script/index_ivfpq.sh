@@ -12,11 +12,11 @@ g++ -O3 -mavx2 -mfma -mavx -msse4.2 ./src/index_ivfpq.cpp -o ./src/index_ivfpq \
 
 # 配置参数
 NLIST=2048      # IVF 聚类数
-M=20            # PQ 子空间数
+M=16            # PQ 子空间数
 NBITS=8         # 编码位数
 TRAIN_SIZE=0    # 0表示使用全部数据训练
 
-datasets=('spacev10m')
+datasets=('sift10m')
 
 for data in "${datasets[@]}"
 do  

@@ -29,18 +29,9 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
     vector<pair<int, int>> test_params;
     
     /* 
-21	32000
-32	42000
-42	60000
-52	80000
-72	100000
-92	130000
-180	240000
-300	420000
-360	560000
+
     */ 
-    // test_params.push_back({300, 420000});
-    test_params.push_back({360, 560000});
+    test_params.push_back({25, 4500});
     
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);

@@ -17,14 +17,14 @@ result_path=./results
 
 # 索引参数
 NLIST=2048
-M=20
+M=16
 NBITS=8
 
 # 搜索参数
-K=10
-NPROBE_LIST=(5 10 15 20 25 30 40 50 70 90 110 150 180 240 300 360)
+K=1
+NPROBE_LIST=(5 10 15 20 25 30 35 40 50 60 70 80)
 
-datasets=('spacev10m')
+datasets=('sift10m')
 
 for data in "${datasets[@]}"
 do

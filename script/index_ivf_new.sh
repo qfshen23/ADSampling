@@ -1,7 +1,7 @@
 cd ..
 g++ -fopenmp -O3 ./src/index_ivf.cpp -o ./src/index_ivf  -I ./src/ -I /usr/include/eigen3 
 C=2048
-datasets=('tiny5m')
+datasets=('sift10m')
 
 for data in "${datasets[@]}"
 do  

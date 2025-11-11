@@ -62,80 +62,75 @@ def compute_statistics(arr):
     }
 
 # =========================
-# Blocked Bloom 签名
+# Hashed Overlap Sketch（每个 cluster 固定 mask）
 # =========================
-class BlockedBloomSignature:
+class HashedOverlapSketch:
     """
-    固定长度的 blocked Bloom 风格签名：
+    每个 cluster 分配一个固定的稀疏 bitmask（常重码），向量签名是这些 mask 的 OR：
     - m_bits: 总位数（64 的倍数，例 256/512/1024）
-    - k_hash: 每个元素置位次数（双重哈希产生 k 个位置）
-    sign(ids) -> np.uint64[ m_bits//64 ]
+    - t_per_cluster: 每个 cluster 置位 bit 数
+    sign(cluster_ids) -> np.uint64[m_bits//64]
     similarity(sig1, sig2, mode):
-        - "bit_jaccard": popcnt(AND) / popcnt(OR) ∈ [0,1]
-        - "and_popcnt":  popcnt(AND)  （越大越相似）
+        - "and_popcnt":  popcnt(AND)     （越大 overlap 越大）
+        - "bit_jaccard": popcnt(AND)/popcnt(OR) ∈ [0,1]
     """
-    def __init__(self, m_bits: int = 256, k_hash: int = 4, seed: int = 42):
+    def __init__(self, num_clusters: int,
+                 m_bits: int = 256,
+                 t_per_cluster: int = 3,
+                 seed: int = 42):
         assert m_bits % 64 == 0 and m_bits > 0
-        assert k_hash >= 1
+        assert t_per_cluster >= 1
+        self.num_clusters = int(num_clusters)
         self.m_bits = int(m_bits)
-        self.words  = self.m_bits // 64
-        self.k_hash = int(k_hash)
-        self.seed   = int(seed)
+        self.words = self.m_bits // 64
+        self.t_per_cluster = int(t_per_cluster)
+        self.seed = int(seed)
+
         rng = np.random.default_rng(seed)
-        # 双重哈希的两个 64-bit 种子
-        self.h1_seed = int(rng.integers(1, (1<<63)-1))
-        self.h2_seed = int(rng.integers(1, (1<<63)-1))
+        # 为每个 cluster 生成一个固定的 mask
+        # mask_table[cid] 是一个 shape = [words] 的 uint64 向量
+        self.mask_table = np.zeros((self.num_clusters, self.words),
+                                   dtype=np.uint64)
+        for cid in range(self.num_clusters):
+            # 为该 cluster 选 t_per_cluster 个不同 bit 位置
+            pos = rng.choice(self.m_bits,
+                             size=self.t_per_cluster,
+                             replace=False)
+            for p in pos:
+                w = int(p) >> 6           # // 64
+                b = int(p) & 63          # % 64
+                self.mask_table[cid, w] |= (np.uint64(1) << np.uint64(b))
 
-    @staticmethod
-    def _splitmix64(x: np.ndarray, seed: int) -> np.ndarray:
-        """SplitMix64 风格的 64-bit 可复现混合。"""
-        z = (x.astype(np.uint64) + np.uint64(seed)) & np.uint64(0xFFFFFFFFFFFFFFFF)
-        z = (z + np.uint64(0x9E3779B97F4A7C15)) & np.uint64(0xFFFFFFFFFFFFFFFF)
-        z = (z ^ (z >> 30)) * np.uint64(0xBF58476D1CE4E5B9) & np.uint64(0xFFFFFFFFFFFFFFFF)
-        z = (z ^ (z >> 27)) * np.uint64(0x94D049BB133111EB) & np.uint64(0xFFFFFFFFFFFFFFFF)
-        z = z ^ (z >> 31)
-        return z
-
-    def _double_hash_positions(self, ids: np.ndarray) -> np.ndarray:
-        """对每个 id 产生 k_hash 个位点 ∈ [0, m_bits)。"""
-        x = ids.astype(np.int64, copy=False)
-        h1 = self._splitmix64(x, self.h1_seed)
-        h2 = self._splitmix64(x, self.h2_seed)
-        i = np.arange(self.k_hash, dtype=np.uint64)[:, None]     # (k_hash,1)
-        pos = (h1[None, :] + i * h2[None, :]) % np.uint64(self.m_bits)  # (k_hash, |ids|)
-        return pos.astype(np.uint64)
-
-    def sign(self, ids: np.ndarray) -> np.ndarray:
-        """把一个 int 集合编码成定长位图签名。"""
+    def sign(self, cluster_ids: np.ndarray) -> np.ndarray:
+        """把一个 int cluster 集合编码成定长位图签名。"""
         sig = np.zeros(self.words, dtype=np.uint64)
-        if ids is None:
+        if cluster_ids is None:
             return sig
-        ids = np.asarray(ids, dtype=np.int64)
+        ids = np.asarray(cluster_ids, dtype=np.int64)
         if ids.size == 0:
             return sig
-        pos = self._double_hash_positions(ids)
-        flat = pos.reshape(-1)
-        word_idx = (flat >> 6).astype(np.int64)             # //64
-        bit_idx  = (flat & np.uint64(63)).astype(np.uint64)
-        # 设位（位数很少，loop 反而 cache 友好）
-        for w, b in zip(word_idx, bit_idx):
-            sig[w] |= (np.uint64(1) << b)
+        # 保证落在合法 [0, num_clusters)
+        ids = ids[(ids >= 0) & (ids < self.num_clusters)]
+        if ids.size == 0:
+            return sig
+        # OR 所有对应的 cluster mask（vectorized）
+        sig = np.bitwise_or.reduce(self.mask_table[ids], axis=0)
         return sig
 
     @staticmethod
     def _popcnt_words(words: np.ndarray) -> int:
         total = 0
-        # Python int.bit_count() 非常快；逐 64-bit 聚合
         for w in words:
             total += int(w).bit_count()
         return total
 
-    def similarity(self, sig1: np.ndarray, sig2: np.ndarray, mode: str = "bit_jaccard") -> float:
+    def similarity(self, sig1: np.ndarray, sig2: np.ndarray,
+                   mode: str = "and_popcnt") -> float:
         andw = (sig1 & sig2).astype(np.uint64)
         if mode == "and_popcnt":
             return float(self._popcnt_words(andw))
         elif mode == "bit_jaccard":
-            orw  = (sig1 | sig2).astype(np.uint64)
+            orw = (sig1 | sig2).astype(np.uint64)
             a = self._popcnt_words(andw)
             o = self._popcnt_words(orw)
             return float(a) / float(o) if o > 0 else 0.0
@@ -143,23 +138,23 @@ class BlockedBloomSignature:
             raise ValueError(f"Unknown score mode: {mode}")
 
 # =========================
-# 主流程：Blocked Bloom 近似排名 → 选 DCO
+# 主流程：Hashed Overlap Sketch 近似排名 → 选 DCO
 # =========================
 def main():
     # -------- 参数区（按需修改） --------
     datasets = ['sift']              # 数据集列表
-    K = 1024                         # 簇总数
+    K_cfg = 1024                     # 预期簇总数（用于选文件名），实际用 centroids.shape[0]
     k_overlap = 64                   # 每个集合大小（top-k clusters）
     nprobe = 10                      # 查询探测的最近簇数量
-    top_x_values = [1000]   # 评测 cutoff
+    top_x_values = [2000]            # 评测 cutoff
     gt_neighbors = 10                # 取前多少 GT 为正例
     max_queries = 1000               # 最多处理多少个 query
 
-    # Blocked Bloom 签名参数
+    # Sketch 参数
     m_bits = 256                     # 256/512/1024... 位；越大越稳
-    k_hash = 3                       # 每元素置位次数（3~6 常见）
-    bb_seed = 12345
-    score_mode = "bit_jaccard"       # 或 "and_popcnt"
+    t_per_cluster = 3                # 每个 cluster 置位个数
+    sketch_seed = 12345
+    score_mode = "and_popcnt"        # 或 "bit_jaccard"
 
     # DCO 预算：每个 query 选多少向量去做 DCO（按分数 Top-M）
     dco_budget = 50000               # 设为 0/None 可跳过输出 DCO 列表
@@ -170,11 +165,12 @@ def main():
         base_path = f'/data/vector_datasets/{dataset}'
         query_path = f'{base_path}/{dataset}_query.fvecs'
         gt_path = f'{base_path}/{dataset}_groundtruth_10000.ivecs'
-        centroids_path = f'{base_path}/{dataset}_centroid_{K}.fvecs'
+        centroids_path = f'{base_path}/{dataset}_centroid_{K_cfg}.fvecs'
         top_clusters_path = f'{base_path}/{dataset}_top_clusters_1024.ivecs'
-        cluster_ids_path = f'{base_path}/{dataset}_cluster_id_{K}.ivecs'
+        cluster_ids_path = f'{base_path}/{dataset}_cluster_id_{K_cfg}.ivecs'
 
-        missing_files = [p for p in [query_path, gt_path, centroids_path, top_clusters_path, cluster_ids_path]
+        missing_files = [p for p in [query_path, gt_path, centroids_path,
+                                     top_clusters_path, cluster_ids_path]
                          if not os.path.exists(p)]
         if missing_files:
             print(f"Skipping {dataset} - {missing_files} missing")
@@ -184,8 +180,8 @@ def main():
         queries = read_fvecs(query_path)
         groundtruth = read_ivecs(gt_path)[:, :gt_neighbors]
         centroids = read_fvecs(centroids_path)
-        top_clusters = read_ivecs(top_clusters_path)      # [N, >=k_overlap]，每行按距离从小到大
-        cluster_ids = read_ivecs(cluster_ids_path)        # [N, 1]，每个向量所属簇 id
+        top_clusters = read_ivecs(top_clusters_path)      # [N, >=k_overlap]
+        cluster_ids = read_ivecs(cluster_ids_path)        # [N, 1]
 
         print(f"Queries shape: {queries.shape}")
         print(f"Groundtruth shape: {groundtruth.shape}")
@@ -194,27 +190,35 @@ def main():
         print(f"Cluster IDs shape: {cluster_ids.shape}")
 
         num_queries = min(max_queries, queries.shape[0])
+        K_real = centroids.shape[0]
+        print(f"Detected num_clusters (K_real) = {K_real}")
 
         # 评测容器
         recall_scores = {x: [] for x in top_x_values}
 
-        # Blocked Bloom 实例（共享）
-        bb = BlockedBloomSignature(m_bits=m_bits, k_hash=k_hash, seed=bb_seed)
+        # HashedOverlapSketch 实例（共享）
+        sketch = HashedOverlapSketch(
+            num_clusters=K_real,
+            m_bits=m_bits,
+            t_per_cluster=t_per_cluster,
+            seed=sketch_seed
+        )
 
         # 懒缓存：只对触及到的 base 向量计算签名
         sig_cache: Dict[int, np.ndarray] = {}
 
-        print("\nBlocked-Bloom-only ranking → choose vectors for DCO...")
+        print("\nHashed-overlap-only ranking → choose vectors for DCO...")
+        cluster_lbl = cluster_ids.flatten()
+
         for qidx in tqdm(range(num_queries)):
             qv = queries[qidx:qidx+1]
 
             # 1) 计算 query→centroid 的 L2 距离，取 nprobe 个最近簇
-            distances = np.sum((qv - centroids) ** 2, axis=1)  # shape: [K]
+            distances = np.sum((qv - centroids) ** 2, axis=1)  # shape: [K_real]
             nearest_clusters = np.argsort(distances)[:nprobe]
 
             # 2) 收集这些簇中的 base 向量作为 probe 集合
             probe_vector_ids: List[int] = []
-            cluster_lbl = cluster_ids.flatten()
             for cid in nearest_clusters:
                 vids = np.where(cluster_lbl == cid)[0]
                 if vids.size:
@@ -222,24 +226,25 @@ def main():
             if not probe_vector_ids:
                 continue
 
-            # 3) 取 query 的 top-k 簇集合并生成 Bloom 签名
-            q_order = np.argsort(distances)      # 0..K-1 的簇索引按距离升序
-            q_set   = q_order[:k_overlap].astype(np.int32)
-            q_sig   = bb.sign(q_set)
+            # 3) 取 query 的 top-k_overlap 簇集合并生成签名
+            q_order = np.argsort(distances)            # 0..K_real-1
+            q_set = q_order[:k_overlap].astype(np.int32)
+            q_sig = sketch.sign(q_set)
 
-            # 4) 对 probe 向量计算 Bloom 分数（直接用于 DCO 排名）
+            # 4) 对 probe 向量计算 overlap 分数（直接用于 DCO 排名）
             scores = np.empty(len(probe_vector_ids), dtype=np.float32)
             for i, vid in enumerate(probe_vector_ids):
                 if vid not in sig_cache:
-                    vec_top = top_clusters[vid, :k_overlap].astype(np.int32, copy=False)
-                    sig_cache[vid] = bb.sign(vec_top)
-                scores[i] = bb.similarity(q_sig, sig_cache[vid], mode=score_mode)
+                    vec_top = top_clusters[vid, :k_overlap].astype(
+                        np.int32, copy=False)
+                    sig_cache[vid] = sketch.sign(vec_top)
+                scores[i] = sketch.similarity(q_sig, sig_cache[vid],
+                                              mode=score_mode)
 
             # 5) （可选）输出本 query 的“要做 DCO 的候选列表”（按分数 Top-M）
             if dco_budget and dco_budget > 0:
                 m = min(dco_budget, len(probe_vector_ids))
                 idx_topm = np.argpartition(scores, -m)[-m:]
-                # 按分数严格降序（可选）
                 ord_topm = np.argsort(scores[idx_topm])[::-1]
                 dco_ids = [probe_vector_ids[j] for j in idx_topm[ord_topm]]
                 # TODO: 在此把 dco_ids 交给你的 DCO 模块
@@ -247,24 +252,29 @@ def main():
 
             # 6) 打印分数分布（诊断用）与 recall 评测
             stats = compute_statistics(scores)
-            print(f"Query {qidx} - Bloom score stats ({score_mode}): "
+            print(f"Query {qidx} - overlap sketch score stats ({score_mode}): "
                   f"min={stats['min']:.4f}, p25={stats['p25']:.4f}, "
-                  f"mean={stats['mean']:.4f}, p75={stats['p75']:.4f}, max={stats['max']:.4f}")
+                  f"mean={stats['mean']:.4f}, p75={stats['p75']:.4f}, "
+                  f"max={stats['max']:.4f}")
 
             gt_ids = groundtruth[qidx]
             for top_x in top_x_values:
                 if top_x <= len(probe_vector_ids):
-                    r = compute_recall_by_scores(probe_vector_ids, scores, gt_ids, top_x)
+                    r = compute_recall_by_scores(
+                        probe_vector_ids, scores, gt_ids, top_x
+                    )
                     recall_scores[top_x].append(r)
                 else:
                     print(f"  [Warn] top-{top_x} > #probes ({len(probe_vector_ids)})")
 
         # -------- 汇总 --------
-        print(f"\n=== Average recall (Blocked-Bloom-only ranking) for {dataset} ===")
+        print(f"\n=== Average recall (Hashed-overlap-only ranking) for {dataset} ===")
         for x in top_x_values:
             vals = recall_scores[x]
             avg = float(np.mean(vals)) if len(vals) else 0.0
-            print(f"  top-{x}: {avg:.4f}  (m_bits={m_bits}, k_hash={k_hash}, mode={score_mode})")
+            print(f"  top-{x}: {avg:.4f}  "
+                  f"(m_bits={m_bits}, t_per_cluster={t_per_cluster}, "
+                  f"mode={score_mode})")
 
 if __name__ == '__main__':
     main()

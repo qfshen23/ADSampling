@@ -4,7 +4,7 @@ g++ ./src/search_ivf.cpp -O3 -mavx -mavx512vpopcntdq -g -o ./src/search_ivf -I .
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results
-datasets=('spacev10m')
+datasets=('sift10m')
 C=2048
 CC=512
 ACTUAL_C=512  # C': actual number of clusters stored per vector in the file
