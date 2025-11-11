@@ -28,9 +28,19 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
 
     vector<pair<int, int>> test_params;
     
-    /*
+    /* 
+21	32000
+32	42000
+42	60000
+52	80000
+72	100000
+92	130000
+180	240000
+300	420000
+360	560000
     */ 
-    test_params.push_back({18, 8000});
+    // test_params.push_back({300, 420000});
+    test_params.push_back({360, 560000});
     
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
@@ -84,7 +94,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         cout << "nprobe = " << nprobe << " k = " << k << " refine_num = " << curr_refine_num << endl;
         cout << "Recall = " << recall * 100.000 << "%\t" << endl;
         cout << "Time = " << time_us_per_query << " us \t QPS = " << 1e6 / (time_us_per_query) << " query/s" << endl;
-        cout << "total distance calculation: " << adsampling::dist_cnt << endl;
+        cout << "total distance calculation: " << adsampling::dist_cnt / Q.n << endl;
         cout << "time1: " << adsampling::time1 << ", time2: " << adsampling::time2 << ", time3: " << adsampling::time3 << ", time4: " << adsampling::time4 << endl;
         #ifdef COUNT_DIMENSION
         cout << "total dimension: " << adsampling::tot_dimension << endl;

@@ -18,12 +18,96 @@ We explain the important variables for the enhanced IVF as follows.
 #include <map>
 #include <mutex>
 #include <random>
+#include <immintrin.h>
+#include <cstdint>
+#include <cstddef>
 
 #include "adsampling.h"
 #include "matrix.h"
 #include "utils.h"
 
 typedef uint64_t uint64_t;
+
+// -------- AVX2 辅助：对 __m256i 做按字节 popcount，并聚合到每个 64-bit lane --------
+#if defined(__AVX2__)
+static inline __m256i avx2_popcnt_epi64(__m256i x) {
+    // nibble -> popcount LUT: 0..15
+    const __m256i lut = _mm256_setr_epi8(
+        0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
+        0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4
+    );
+    const __m256i low_mask = _mm256_set1_epi8(0x0F);
+
+    // 按字节拆成低/高 nibble，查 LUT 得到每个字节的 popcount
+    __m256i lo = _mm256_and_si256(x, low_mask);
+    __m256i hi = _mm256_and_si256(_mm256_srli_epi16(x, 4), low_mask);
+    __m256i pc_lo = _mm256_shuffle_epi8(lut, lo);
+    __m256i pc_hi = _mm256_shuffle_epi8(lut, hi);
+    __m256i byte_pc = _mm256_add_epi8(pc_lo, pc_hi); // 每个字节的 bitcount
+
+    // 将每 8 个字节（即 64-bit）求和：用 SAD 与 0 的差值就是字节求和
+    const __m256i zero = _mm256_setzero_si256();
+    // _mm256_sad_epu8 返回 4 个 64-bit 结果（每 8 字节一组）
+    __m256i lane_sums = _mm256_sad_epu8(byte_pc, zero); // 4x u64
+    return lane_sums; // 每个 64-bit lane 的 popcount（范围 0..64）
+}
+#endif
+
+// -------- 计数一个向量的 overlap count（SIMD + 回退） --------
+static inline uint64_t overlap_popcount_simd(
+    const uint64_t* __restrict a,    // vector_clusters
+    const uint64_t* __restrict b,    // query_bitmasks
+    size_t num_words                 // 每向量的 64-bit word 数
+) {
+    uint64_t acc = 0;
+
+#if defined(__AVX512VPOPCNTDQ__)
+    // AVX-512：一次处理 8 个 64-bit
+    size_t simd_words = (num_words / 8) * 8;
+    for (size_t i = 0; i < simd_words; i += 8) {
+        __m512i va = _mm512_loadu_si512((const void*)(a + i));
+        __m512i vb = _mm512_loadu_si512((const void*)(b + i));
+        __m512i vand = _mm512_and_si512(va, vb);
+        // 每个 64-bit lane 的 popcnt
+        __m512i vpc = _mm512_popcnt_epi64(vand);
+        // 水平求和 8 个 u64
+        acc += (uint64_t)_mm512_reduce_add_epi64(vpc);
+    }
+    for (size_t i = simd_words; i < num_words; ++i) {
+        acc += (uint64_t)__builtin_popcountll(a[i] & b[i]);
+    }
+    return acc;
+
+#elif defined(__AVX2__)
+    // AVX2：一次处理 4 个 64-bit
+    size_t simd_words = (num_words / 4) * 4;
+    alignas(32) uint64_t tmp[4];
+
+    for (size_t i = 0; i < simd_words; i += 4) {
+        __m256i va = _mm256_loadu_si256((const __m256i*)(a + i));
+        __m256i vb = _mm256_loadu_si256((const __m256i*)(b + i));
+        __m256i vand = _mm256_and_si256(va, vb);
+
+        // 使用 nibble LUT + pshufb 的按字节 popcount，再汇总到 64-bit lane
+        __m256i vpc64 = avx2_popcnt_epi64(vand);
+
+        // 把 4 个 64-bit 结果写回再累加（也可用提取指令）
+        _mm256_store_si256((__m256i*)tmp, vpc64);
+        acc += tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    }
+    for (size_t i = simd_words; i < num_words; ++i) {
+        acc += (uint64_t)__builtin_popcountll(a[i] & b[i]);
+    }
+    return acc;
+
+#else
+    // 标量回退：POPCNT（大多数编译器会生成 popcnt 指令）
+    for (size_t i = 0; i < num_words; ++i) {
+        acc += (uint64_t)__builtin_popcountll(a[i] & b[i]);
+    }
+    return acc;
+#endif
+}
 
 class IVF{
 public:
@@ -385,7 +469,6 @@ ResultHeap IVF::search(
     size_t selected_count = 0;
 
     // StopW stopw2;
-    
     // 合并overlap计算和第一次筛选，减少一次遍历
     for(int pi = 0; pi < nprobe; ++pi) {
         int cluster_id = centroid_dist[pi].second;
@@ -421,8 +504,25 @@ ResultHeap IVF::search(
             overlap_ratios[cur++] = overlap_count;
         }
     }
-
+    
     // adsampling::time2 += stopw2.getElapsedTimeMicro();
+
+    /*
+    for (int pi = 0; pi < nprobe; ++pi) {
+        int cluster_id = centroid_dist[pi].second;
+        size_t L = len[cluster_id];
+        size_t s = start[cluster_id];
+        for (size_t j = 0; j < L; ++j) {
+            size_t local_idx = s + j;
+            local_indices[cur] = local_idx;
+
+            const uint64_t* vc = topk_clusters_flat_ + local_idx * num_words;
+            uint64_t overlap_count = overlap_popcount_simd(vc, query_bitmasks, num_words);
+
+            overlap_ratios[cur++] = overlap_count;
+        }
+    }
+    */
 
     const int MAX_OVERLAP = 64;
     int bucket[MAX_OVERLAP + 1] = {0};

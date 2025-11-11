@@ -18,23 +18,6 @@ def read_fvecs(filename, c_contiguous=True):
     if c_contiguous:
         fv = fv.copy()
     return fv
-    bv = np.fromfile(filename, dtype=np.uint8)
-    if bv.size == 0:
-        return np.zeros((0, 0))
-    dim = bv.view(np.int32)[0]
-    assert dim > 0
-    bv = bv.reshape(-1, dim + 4)  # 4 bytes for dimension + dim bytes for vector
-    # Check dimension consistency
-    for i in range(bv.shape[0]):
-        d = bv[i, :4].view(np.int32)[0]
-        if d != dim:
-            raise IOError("Non-uniform vector sizes in " + filename)
-    bv = bv[:, 4:]  # Skip the 4-byte dimension header
-    # Convert to float32 for compatibility with faiss
-    bv = bv.astype(np.float32)
-    if c_contiguous:
-        bv = bv.copy()
-    return bv
 
 def read_vectors(filename, c_contiguous=True):
     return read_fvecs(filename, c_contiguous)
@@ -83,7 +66,7 @@ if __name__ == '__main__':
     # Parameters
     source = '/data/vector_datasets/'
     datasets = ['spacev10m', 'bigann10m', 'deep10m']
-    K = 4096  # Total number of clusters
+    K = 2048  # Total number of clusters
     batch_size = 2000
     k = 512  # Number of top clusters to keep
 

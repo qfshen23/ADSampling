@@ -1,11 +1,11 @@
 cd ..
-g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/include/eigen3 -fopenmp
+g++ ./src/search_ivf.cpp -O3 -mavx -mavx512vpopcntdq -g -o ./src/search_ivf -I ./src/ -I /usr/include/eigen3 -fopenmp
 
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results
-datasets=('bigann10m')
-C=4096
+datasets=('spacev10m')
+C=2048
 CC=512
 ACTUAL_C=512  # C': actual number of clusters stored per vector in the file
 K=10
