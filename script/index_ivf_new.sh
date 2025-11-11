@@ -1,7 +1,7 @@
 cd ..
 g++ -fopenmp -O3 ./src/index_ivf.cpp -o ./src/index_ivf  -I ./src/ -I /usr/include/eigen3 
-C=2048
-datasets=('bigann10m')
+C=4096
+datasets=('sift10m')
 
 # prop=50
 

@@ -5,9 +5,9 @@ g++ ./src/search_ivf.cpp -O3 -mavx -g -o ./src/search_ivf -I ./src/ -I /usr/incl
 path=/data/vector_datasets
 index_path=/data/tmp/ivf
 result_path=./results 
-datasets=('spacev10m')
-C=2048
-K=1
+datasets=('sift10m')
+C=4096
+K=10
 prop=25
 
 for data in "${datasets[@]}"
@@ -19,7 +19,7 @@ do
             continue
         fi
 
-        res="${result_path}/${data}_IVF${C}_${randomize}-tmp.log"
+        res="${result_path}/${data}_IVF${C}_${randomize}.log"
         # index="${index_path}/${data}/${data}_ivf_${C}_${randomize}_${prop}.index"
         index="${index_path}/${data}/${data}_ivf_${C}_${randomize}.index"
         # index="${index_path}/${data}/${data}_ivf_${C}_${randomize}_reorder.index"

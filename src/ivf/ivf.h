@@ -40,6 +40,8 @@ public:
     size_t* len;
     size_t* id;
 
+    float cluster_ratio; // Ratio of clusters to search (1.0 = 100%, 0.5 = 50%, etc.)
+
     IVF();
     IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive=0);
     IVF(const Matrix<float> &X, const Matrix<float> &_centroids, const Matrix<int> &groundtruth, int adaptive);
@@ -55,6 +57,7 @@ IVF::IVF(){
     N = D = C = d = 0;
     start = len = id = NULL;
     L1_data = res_data = centroids = NULL;
+    cluster_ratio = 1.0; // Default to 100% (all clusters)
 }
 
 IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) {
@@ -62,6 +65,7 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, int adaptive) 
     N = X.n;
     D = X.d;
     C = _centroids.n;
+    cluster_ratio = 1.0; // Default to 100% (all clusters)
     
     assert(D >= 32);
     start = new size_t [C];
@@ -224,6 +228,7 @@ IVF::IVF(const Matrix<float> &X, const Matrix<float> &_centroids, const Matrix<i
     N = X.n;
     D = X.d;
     C = _centroids.n;
+    cluster_ratio = 1.0; // Default to 100% (all clusters)
 
     assert(D >= 32);
     start = new size_t[C];
@@ -338,6 +343,15 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     Result* centroid_dist = new Result [C];
 
     // StopW stopw = StopW();
+    // Calculate effective number of clusters to probe based on cluster_ratio
+    // When cluster_ratio < 1.0, use percentage of total clusters; otherwise use nprobe
+    size_t effective_nprobe = nprobe;
+    if (cluster_ratio < 1.0 && cluster_ratio > 0.0) {
+        effective_nprobe = (size_t)(nprobe * cluster_ratio);
+        if (effective_nprobe < 1) effective_nprobe = 1;  // At least probe 1 cluster
+        if (effective_nprobe > C) effective_nprobe = C;  // At most probe C clusters
+    }
+    
     // Find out the closest N_{probe} centroids to the query vector.
     for(int i=0;i<C;i++){
 #ifdef COUNT_DIST_TIME
@@ -354,13 +368,13 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
 
     adsampling::dist_cnt += 1ll * C;
 
-    // Find out the closest N_{probe} centroids to the query vector.
-    std::partial_sort(centroid_dist, centroid_dist + nprobe, centroid_dist + C);
+    // Find out the closest effective_nprobe centroids to the query vector.
+    std::partial_sort(centroid_dist, centroid_dist + effective_nprobe, centroid_dist + C);
 
     // adsampling::time1 += stopw.getElapsedTimeMicro();
     
     size_t ncan = 0;
-    for(int i=0;i<nprobe;i++)
+    for(int i=0;i<effective_nprobe;i++)
         ncan += len[centroid_dist[i].second];
     
     adsampling::all_dimension += 1ll * ncan * D;
@@ -383,7 +397,7 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
     // For IVF+ (i.e., apply ADSampling without optimizing data layout), it should be 0.
     // For IVF++ (i.e., apply ADSampling with optimizing data layout), it should be delta_d (i.e., 32). 
     cur = -1;
-    for(int i=0;i<nprobe;i++){
+    for(int i=0;i<effective_nprobe;i++){
         int cluster_id = centroid_dist[i].second;
         for(int j=0;j<len[cluster_id];j++) {
 
@@ -429,7 +443,7 @@ ResultHeap IVF::search(float* query, size_t k, size_t nprobe, float distK) const
         // adsampling::time4 += stopw.getElapsedTimeMicro();
     } else if(d < D) {  // d < D indicates ADSampling with and without cache-level optimization
         auto cur_dist = dist;
-        for(int i = 0;i < nprobe;i++){
+        for(int i = 0;i < effective_nprobe;i++){
             int cluster_id = centroid_dist[i].second;
             for(int j=0;j<len[cluster_id];j++){
                 size_t can = start[cluster_id] + j;
