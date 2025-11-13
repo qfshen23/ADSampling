@@ -8,7 +8,7 @@ datasets=('sift10m')
 C=2048
 CC=512
 ACTUAL_C=512  # C': actual number of clusters stored per vector in the file
-K=10
+K=1
 k_overlap=64
 randomize=0
 
