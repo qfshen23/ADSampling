@@ -23,25 +23,9 @@ long double rotation_time=0;
 
 char diskK_path[256] = "";
 
-void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int k){
+void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int k, const vector<int> &nprobes){
     float sys_t, usr_t, usr_t_sum = 0, total_time=0, search_time=0;
     struct rusage run_start, run_end;
-
-    /*
-5
-10
-15
-20
-25
-30
-35
-40
-50
-60
-70
-80
-    */
-    vector<int> nprobes = {5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80};
     
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
@@ -119,6 +103,8 @@ int main(int argc, char * argv[]) {
         {"K",                           required_argument, 0, 'k'},
         {"epsilon0",                    required_argument, 0, 'e'},
         {"delta_d",                     required_argument, 0, 'p'},
+        {"nprobes",                     required_argument, 0, 'b'},
+        {"cluster_ratio",               required_argument, 0, 'c'},
 
         // Indexing Path 
         {"dataset",                     required_argument, 0, 'n'},
@@ -140,12 +126,15 @@ int main(int argc, char * argv[]) {
     char result_path[256] = "";
     char dataset[256] = "";
     char transformation_path[256] = "";
+    char nprobes_str[1024] = "";
 
     int randomize = 0;
     int subk = 100;
+    double cluster_ratio = 1.0;
+    vector<int> nprobes = {5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80}; // 默认值
 
     while(iarg != -1) {
-        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:a:", longopts, &ind);
+        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:a:b:c:", longopts, &ind);
         switch (iarg){
             case 'd':
                 if(optarg)randomize = atoi(optarg);
@@ -180,6 +169,22 @@ int main(int argc, char * argv[]) {
             case 'a':
                 if(optarg)strcpy(diskK_path, optarg);
                 break;
+            case 'b':
+                if(optarg)strcpy(nprobes_str, optarg);
+                break;
+            case 'c':
+                if(optarg)cluster_ratio = atof(optarg);
+                break;
+        }
+    }
+    
+    // 解析 nprobes 列表
+    if(strlen(nprobes_str) > 0) {
+        nprobes.clear();
+        char* token = strtok(nprobes_str, ",");
+        while(token != NULL) {
+            nprobes.push_back(atoi(token));
+            token = strtok(NULL, ",");
         }
     }
     
@@ -201,7 +206,7 @@ int main(int argc, char * argv[]) {
     
     IVF ivf;
     ivf.load(index_path);
-    ivf.cluster_ratio = 1;
-    test(Q, G, ivf, subk);
+    ivf.cluster_ratio = cluster_ratio;
+    test(Q, G, ivf, subk, nprobes);
     return 0;
 }
