@@ -11,20 +11,23 @@ index_path=${INDEX_PATH:-/data/tmp/ivf}
 result_path=${RESULT_PATH:-./results}  
 
 # 需要跑的多个数据集
-datasets=(deep10m bigann10m sift10m)
+datasets=(sift10m)
 
 # 每个数据集的聚类数 C（你的 index 文件名需要用到）
 declare -A C_BY_DATASET=(
+  [sift]=1024
+  [gist]=1024
+  [tiny5m]=2048
   [deep10m]=2048
   [bigann10m]=2048
   [sift10m]=2048
 )
 
 # cluster_ratio（同一 dataset+K 的 nprobe 列表对所有 ratio 相同）
-cluster_ratios=(0.25 0.5 0.75 1.0)
+cluster_ratios=(1.0)
 
 # 只跑随机化=0（IVF）；1=IVF+, 2=IVF++（按你之前逻辑跳过）
-randomize_list=(0)
+randomize_list=(1)
 
 # ========== 3) nprobe 列表：按 (dataset, K) 映射 ==========
 # 返回“逗号分隔”的字符串，便于直接传给 -b
@@ -32,6 +35,9 @@ nprobe_list_for () {
   local ds="$1" k="$2"
   if [[ "${k}" -eq 10 ]]; then
     case "${ds}" in
+      gist)   echo "10,15,20,25,30,35,45,50,60,70,90,110" ;;
+      sift)   echo "5,10,15,20,25,30,35,40,45,50" ;;
+      tiny5m)   echo "10,15,20,25,30,35,40,45,50,70,90,100,120,140,160" ;;
       deep10m)   echo "5,10,15,20,25,30,35,40,50,60,70,80" ;;
       bigann10m) echo "5,10,15,20,25,30,35,40,50,60,70,80,90" ;;
       sift10m)   echo "5,10,15,20,25,30,35,40,50,60,70,80" ;;
@@ -39,9 +45,11 @@ nprobe_list_for () {
     esac
   elif [[ "${k}" -eq 1 ]]; then
     case "${ds}" in
-      sift10m)   echo "5,10,15,20,25,30,35,40,50,60,80" ;;
+      gist)   echo "10,15,20,25,30,35,40,45,60,70,90,100,120" ;;
+      sift)   echo "5,10,15,20,25,30,45,65,80" ;;
       deep10m)   echo "5,10,15,20,25,30,35,40,45,50,55,60,65" ;;
       bigann10m) echo "5,10,15,20,25,30,35,40,45,50,60,70" ;;
+      sift10m)   echo "5,10,15,20,25,30,35,40,50,60,80" ;;
       *) echo "Unknown dataset for K=1: ${ds}" >&2; exit 1 ;;
     esac
   else
@@ -57,7 +65,7 @@ run_one_set () {
 
   for randomize in "${randomize_list[@]}"; do
     # 跳过非 0 的模式（保持和你原脚本一致）
-    if [[ $randomize -ne 0 ]]; then
+    if [[ $randomize -ne 1 ]]; then
       echo "Skipping adaptive=${randomize} for dataset ${data} (K=${K})"
       continue
     fi
@@ -71,7 +79,7 @@ run_one_set () {
       local nprobe_str; nprobe_str="$(echo "${nprobe_list}" | tr ',' '_')"
       local ratio_str;   ratio_str="$(echo "${ratio}" | tr '.' 'p')"
 
-      local res="${result_path}/${data}_IVF${C}_${randomize}_K${K}_ratio_${ratio_str}.log"
+      local res="${result_path}/${data}_IVF${C}_${randomize}.log"
       local diskK="${result_path}/${data}_IVF${C}_${randomize}_diskK.log"
 
       echo "----------------------------------------------------------------"

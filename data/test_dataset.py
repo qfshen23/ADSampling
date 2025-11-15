@@ -4,7 +4,7 @@ import os
 from ivf import read_fvecs, source
 
 # Use same dataset path structure as ivf.py
-dataset = 'word2vec'  # Using deep1M as it's likely word vectors
+dataset = 'msong'  # Using deep1M as it's likely word vectors
 path = os.path.join(source, dataset)
 data_path = os.path.join(path, f'{dataset}_base.fvecs')
 

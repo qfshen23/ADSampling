@@ -3,7 +3,7 @@ import numpy as np
 import struct
 
 source = '/data/vector_datasets/'
-datasets = ['gist' , 'sift', 'deep1M']
+datasets = ['msong']
 
 def read_fvecs(filename, c_contiguous=True):
     fv = np.fromfile(filename, dtype=np.float32)

@@ -1,6 +1,6 @@
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
-// #define COUNT_DIMENSION
+#define COUNT_DIMENSION
 // #define PLOT_DISK_K
 // #define COUNT_DIST_TIME
 
@@ -84,7 +84,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         cout << "average count of exact srq_dist calls: " << adsampling::dist_cnt / Q.n << endl;
         // cout << "pruned rate: " << 1 - (adsampling::tot_dimension + (double)0.0) / adsampling::all_dimension << endl;
         #ifdef COUNT_DIMENSION
-        cout << "total dimension: " << adsampling::tot_dimension << endl;
+        cout << "total dimension: " << adsampling::tot_dimension / Q.n << endl;
         #endif
     }
 #ifdef PLOT_DISK_K
