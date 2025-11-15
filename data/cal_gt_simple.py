@@ -70,7 +70,7 @@ def compute_groundtruth_simple(dataset='sift', k=100):
     print("完成!")
 
 if __name__ == '__main__':
-    datasets = ['deep10m', 'spacev10m', 'bigann10m']
+    datasets = ['glove2m']
     for dataset in datasets:
         try:
             compute_groundtruth_simple(dataset, k=100)

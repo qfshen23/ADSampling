@@ -4,9 +4,9 @@ import struct
 import os
 
 source = '/data/vector_datasets/'
-datasets = ['sift10m']
+datasets = ['glove2m']
 # the number of clusters
-K = 2048
+K = 1024
 
 def read_fvecs(filename, c_contiguous=True):
     fv = np.fromfile(filename, dtype=np.float32)
