@@ -1,7 +1,7 @@
 cd ..
 g++ -fopenmp -O3 ./src/index_ivf.cpp -o ./src/index_ivf  -I ./src/ -I /usr/include/eigen3 
 C=1024
-datasets=('sift' 'gist')
+datasets=('msong')
 
 for data in "${datasets[@]}"
 do  
