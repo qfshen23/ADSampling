@@ -1,6 +1,6 @@
 #define EIGEN_DONT_PARALLELIZE
 #define EIGEN_DONT_VECTORIZE
-// #define COUNT_DIMENSION
+#define COUNT_DIMENSION
 // #define PLOT_DISK_K
 // #define COUNT_DIST_TIME
 
@@ -22,36 +22,9 @@ long double rotation_time=0;
 
 char diskK_path[256] = "";
 
-void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int k, int k_overlap, int refine_num){
+void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int k, int k_overlap, int refine_num, const vector<pair<int, int>> &test_params){
     float sys_t, usr_t, usr_t_sum = 0, total_time=0, search_time=0;
     struct rusage run_start, run_end;
-
-    vector<pair<int, int>> test_params;
-    
-    /* 
-10	400
-15	1500
-20	2800
-25	3500
-30	5000
-35	7500
-40	9000
-45	10000
-50	12000
-60	14000
-80	15000
-    */ 
-    test_params.push_back({10, 400});
-    test_params.push_back({15, 1500});
-    test_params.push_back({20, 2800});
-    test_params.push_back({25, 3500});
-    test_params.push_back({30, 5000});
-    test_params.push_back({35, 7500});
-    test_params.push_back({40, 9000});
-    test_params.push_back({45, 10000});
-    test_params.push_back({50, 12000});
-    test_params.push_back({60, 14000});
-    test_params.push_back({80, 15000});
     
 #ifdef PLOT_DISK_K
     std::ofstream fout(diskK_path);
@@ -108,7 +81,7 @@ void test(const Matrix<float> &Q, const Matrix<unsigned> &G, const IVF &ivf, int
         cout << "total distance calculation: " << adsampling::dist_cnt / Q.n << endl;
         cout << "time1: " << adsampling::time1 << ", time2: " << adsampling::time2 << ", time3: " << adsampling::time3 << ", time4: " << adsampling::time4 << endl;
         #ifdef COUNT_DIMENSION
-        cout << "total dimension: " << adsampling::tot_dimension << endl;
+        cout << "total dimension: " << adsampling::tot_dimension / Q.n << endl;
         #endif
     }
 #ifdef PLOT_DISK_K
@@ -142,6 +115,7 @@ int main(int argc, char * argv[]) {
         {"cc",                          required_argument, 0, 'f'},
         {"top_centroids_path",          required_argument, 0, 'h'},
         {"actual_c",                    required_argument, 0, 'x'},
+        {"test_params",                 required_argument, 0, 'z'},
     };
 
     int ind;
@@ -162,8 +136,9 @@ int main(int argc, char * argv[]) {
     int cc = 0;
     int actual_c = 0;  // C': actual number of clusters stored per vector
     char top_centroids_path[256] = "";
+    char test_params_str[1024] = "";  // 用于存储测试参数字符串
     while(iarg != -1) {
-        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:a:o:c:b:f:h:x:", longopts, &ind);
+        iarg = getopt_long(argc, argv, "d:i:q:g:r:t:n:k:e:p:a:o:c:b:f:h:x:z:", longopts, &ind);
         switch (iarg){
             case 'd':
                 if(optarg)randomize = atoi(optarg);
@@ -216,7 +191,39 @@ int main(int argc, char * argv[]) {
             case 'x':
                 if(optarg)actual_c = atoi(optarg);
                 break;
+            case 'z':
+                if(optarg)strcpy(test_params_str, optarg);
+                break;
         }
+    }
+    
+    // 解析 test_params
+    vector<pair<int, int>> test_params;
+    if (test_params_str[0] != '\0') {
+        // 从命令行参数解析，格式: "10:400,15:1500,20:2800,..."
+        char *token = strtok(test_params_str, ",");
+        while (token != NULL) {
+            int nprobe, refine;
+            if (sscanf(token, "%d:%d", &nprobe, &refine) == 2) {
+                test_params.push_back({nprobe, refine});
+            }
+            token = strtok(NULL, ",");
+        }
+    }
+    
+    // 如果没有通过命令行指定参数，使用默认值
+    if (test_params.empty()) {
+        test_params.push_back({10, 400});
+        test_params.push_back({15, 1500});
+        test_params.push_back({20, 2800});
+        test_params.push_back({25, 3500});
+        test_params.push_back({30, 5000});
+        test_params.push_back({35, 7500});
+        test_params.push_back({40, 9000});
+        test_params.push_back({45, 10000});
+        test_params.push_back({50, 12000});
+        test_params.push_back({60, 14000});
+        test_params.push_back({80, 15000});
     }
     
     Matrix<float> Q(query_path);
@@ -254,6 +261,6 @@ int main(int argc, char * argv[]) {
         ivf.loadTopkClusters(topk_clusters_path, k_overlap, c_prime);
         ivf.flattenTopkClusters();
     }
-    test(Q, G, ivf, subk, k_overlap, refine_num);
+    test(Q, G, ivf, subk, k_overlap, refine_num, test_params);
     return 0;
 }

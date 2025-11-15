@@ -436,7 +436,7 @@ ResultHeap IVF::search(
     }
     adsampling::dist_cnt += C;
     std::partial_sort(centroid_dist, centroid_dist + nprobe, centroid_dist + C);
-    adsampling::tot_dimension += nprobe * D;
+    // adsampling::tot_dimension += nprobe * D;
     // adsampling::time1 += stopw.getElapsedTimeMicro();
 
     Result* topk_centroids_dist = new Result[top_centroids_num_];
