@@ -11,13 +11,14 @@ index_path=${INDEX_PATH:-/data/tmp/ivf}
 result_path=${RESULT_PATH:-./results}  
 
 # 需要跑的多个数据集
-datasets=(msong)
+datasets=(glove2m)
 
 # 每个数据集的聚类数 C（你的 index 文件名需要用到）
 declare -A C_BY_DATASET=(
   [sift]=1024
   [gist]=1024
   [msong]=1024
+  [glove2m]=1024
   [tiny5m]=2048
   [deep10m]=2048
   [bigann10m]=2048
@@ -37,6 +38,7 @@ nprobe_list_for () {
   if [[ "${k}" -eq 10 ]]; then
     case "${ds}" in
       msong)   echo "5,10,15,20,25,30,35,40,45,50" ;;
+      glove2m) echo "5,10,15,20,25,30,35,40,45,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200" ;;
       gist)   echo "10,15,20,25,30,35,45,50,60,70,90,110" ;;
       sift)   echo "5,10,15,20,25,30,35,40,45,50" ;;
       tiny5m)   echo "10,15,20,25,30,35,40,45,50,70,90,100,120,140,160" ;;
@@ -47,6 +49,7 @@ nprobe_list_for () {
     esac
   elif [[ "${k}" -eq 1 ]]; then
     case "${ds}" in
+      glove2m) echo "5,10,15,20,25,30,35,40,45,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200" ;;
       msong)   echo "5,10,15,20,25,30,35,40,45,50" ;;
       gist)   echo "10,15,20,25,30,35,40,45,60,70,90,100,120" ;;
       sift)   echo "5,10,15,20,25,30,45,65,80" ;;
