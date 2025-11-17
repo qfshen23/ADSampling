@@ -3,7 +3,7 @@ import numpy as np
 import struct
 
 source = '/data/vector_datasets/'
-datasets = ['glove2m']
+datasets = ['bigann100m']
 
 def read_fvecs(filename, c_contiguous=True):
     fv = np.fromfile(filename, dtype=np.float32)
@@ -41,7 +41,7 @@ if __name__ == "__main__":
         O = read_fvecs(O_path)
         
         # read centroids
-        centroids_path = os.path.join(path, f'{dataset}_centroid_1024.fvecs')
+        centroids_path = os.path.join(path, f'{dataset}_centroid_10240.fvecs')
         print(f"Reading centroids from {centroids_path}")
         centroids = read_fvecs(centroids_path)
         
@@ -50,7 +50,7 @@ if __name__ == "__main__":
         O_centroids = np.dot(centroids, O)
         
         # save transformed centroids
-        O_centroids_path = os.path.join(path, f'O{dataset}_centroid_1024.fvecs')
+        O_centroids_path = os.path.join(path, f'O{dataset}_centroid_10240.fvecs')
         to_fvecs(O_centroids_path, O_centroids)
         
         print(f"Saved transformed centroids to {O_centroids_path}")

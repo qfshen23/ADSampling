@@ -4,26 +4,83 @@ import struct
 import os
 
 source = '/data/vector_datasets/'
-datasets = ['glove2m']
+datasets = ['msmarco20m']
 # the number of clusters
-K = 1024
+K = 4096
 
-def read_fvecs(filename, c_contiguous=True):
-    fv = np.fromfile(filename, dtype=np.float32)
-    if fv.size == 0:
-        return np.zeros((0, 0))
-    dim = fv.view(np.int32)[0]
-    assert dim > 0
-    fv = fv.reshape(-1, 1 + dim)
-    if not all(fv.view(np.int32)[:, 0] == dim):
-        raise IOError("Non-uniform vector sizes in " + filename)
-    fv = fv[:, 1:]
-    if c_contiguous:
-        fv = fv.copy()
-    return fv
+
+def read_vecs_fast(filename, show_progress=True):
+    """
+    快速读取 .vecs 格式的向量文件（优化版本）
+    一次性读取所有数据并重新组织，比逐个向量读取快很多
+    
+    参数:
+        filename: 文件路径
+        show_progress: 是否显示读取进度
+    """
+    # 根据文件扩展名推断数据类型
+    if filename.endswith(".fvecs"):
+        dtype = np.float32
+        dtype_size = 4
+    elif filename.endswith(".ivecs"):
+        dtype = np.int32
+        dtype_size = 4
+    elif filename.endswith(".bvecs"):
+        dtype = np.uint8
+        dtype_size = 1
+    else:
+        raise ValueError(f"未知的 vecs 文件类型: {filename}")
+    
+    if show_progress:
+        print("  📊 分析文件结构...")
+    
+    # 获取文件大小
+    file_size = os.path.getsize(filename)
+    
+    with open(filename, "rb") as f:
+        # 读取第一个向量的维度
+        dim = struct.unpack('i', f.read(4))[0]
+        
+        # 计算每个向量占用的字节数：4字节(维度) + dim * dtype_size
+        vec_size = 4 + dim * dtype_size
+        
+        # 计算总向量数
+        n = file_size // vec_size
+        
+        if show_progress:
+            print(f"  📏 检测到 {n:,} 个向量，每个维度 {dim}")
+            print(f"  💾 文件大小: {file_size / (1024**3):.2f} GB")
+            print(f"  🚀 开始快速读取...")
+        
+        # 回到文件开头
+        f.seek(0)
+        
+        # 一次性读取所有数据
+        all_data = np.fromfile(f, dtype=np.uint8, count=file_size)
+    
+    if show_progress:
+        print(f"  🔄 重组数据结构...")
+    
+    # 高效方法：使用numpy的视图和切片操作，避免Python循环
+    # 将字节数据重新解释为结构化数组
+    all_data = all_data.reshape(n, vec_size)
+    
+    # 跳过每个向量前4字节的维度信息，提取向量数据
+    # all_data[:, 4:] 跳过前4列（维度信息）
+    vec_data = all_data[:, 4:].copy()  # copy()确保数据连续
+    
+    # 将字节数据重新解释为目标数据类型
+    vectors = np.frombuffer(vec_data.tobytes(), dtype=dtype).reshape(n, dim)
+    
+    if show_progress:
+        print(f"  ✅ 完成！读取了 {n:,} 个 {dim} 维向量")
+    
+    return vectors
+
+
 
 def read_vectors(filename, c_contiguous=True):
-    return read_fvecs(filename, c_contiguous)
+    return read_vecs_fast(filename, c_contiguous)
 
 def to_fvecs(filename, data):
     print(f"Writing File - {filename}")
