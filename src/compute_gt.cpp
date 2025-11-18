@@ -12,13 +12,26 @@
 using namespace std;
 using namespace std::chrono;
 
+// 距离度量类型
+enum DistanceMetric {
+    L2,  // 欧氏距离（L2）：越小越好
+    IP   // 内积（Inner Product）：越大越好
+};
+
 // 结果对结构
 struct Result {
     float dist;
     int id;
+    DistanceMetric metric;
     
     bool operator<(const Result& other) const {
-        return dist < other.dist;  // 最大堆：距离大的在堆顶
+        // 对于L2：距离大的在堆顶（最大堆）
+        // 对于IP：相似度小的在堆顶（最小堆，因为IP越大越好）
+        if (metric == L2) {
+            return dist < other.dist;  // L2: 最大堆
+        } else {
+            return dist > other.dist;  // IP: 最小堆
+        }
     }
 };
 
@@ -42,6 +55,11 @@ public:
         size_t file_size = file.tellg();
         file.seekg(0, ios::beg);
         
+        if (file_size < sizeof(int)) {
+            cerr << "File too small: " << filename << endl;
+            return false;
+        }
+        
         // 读取第一个向量的维度
         int first_dim;
         file.read(reinterpret_cast<char*>(&first_dim), sizeof(int));
@@ -50,17 +68,56 @@ public:
             return false;
         }
         
+        // 验证维度的合理性
+        if (first_dim <= 0 || first_dim > 100000) {
+            cerr << "Invalid dimension: " << first_dim << " (expected 1-100000)" << endl;
+            cerr << "File may be corrupted or in wrong format: " << filename << endl;
+            return false;
+        }
+        
         d = first_dim;
         size_t bytes_per_vector = sizeof(int) + d * sizeof(unsigned char);
+        
+        // 验证文件大小
+        if (file_size % bytes_per_vector != 0) {
+            cerr << "File size mismatch. File size: " << file_size 
+                 << ", bytes per vector: " << bytes_per_vector << endl;
+            cerr << "File may be corrupted: " << filename << endl;
+            return false;
+        }
+        
         n = file_size / bytes_per_vector;
         
+        // 验证向量数量的合理性
+        if (n <= 0 || n > 1000000000) {
+            cerr << "Invalid number of vectors: " << n << endl;
+            return false;
+        }
+        
         cout << "Reading " << n << " vectors of dimension " << d << " from " << filename << endl;
+        
+        // 检查是否会分配过多内存（超过 50GB）
+        size_t total_size = static_cast<size_t>(n) * static_cast<size_t>(d) * sizeof(float);
+        size_t max_size = 100ULL * 1024 * 1024 * 1024;  // 100 GB
+        if (total_size > max_size) {
+            cerr << "Error: Would allocate too much memory: " 
+                 << (total_size / (1024.0 * 1024 * 1024)) << " GB" << endl;
+            cerr << "Maximum allowed: " << (max_size / (1024.0 * 1024 * 1024)) << " GB" << endl;
+            return false;
+        }
         
         // 重置文件指针
         file.seekg(0, ios::beg);
         
         // 预分配内存
-        data.resize(n * d);
+        try {
+            data.resize(n * d);
+        } catch (const std::bad_alloc& e) {
+            cerr << "Failed to allocate memory for " << n << " x " << d << " vectors" << endl;
+            cerr << "Required memory: " << (total_size / (1024.0 * 1024 * 1024)) << " GB" << endl;
+            return false;
+        }
+        
         vector<unsigned char> temp_vector(d);
         
         // 读取所有向量
@@ -68,7 +125,8 @@ public:
             int vec_dim;
             file.read(reinterpret_cast<char*>(&vec_dim), sizeof(int));
             if (vec_dim != d) {
-                cerr << "Inconsistent dimension at vector " << i << ": expected " << d << ", got " << vec_dim << endl;
+                cerr << "Inconsistent dimension at vector " << i 
+                     << ": expected " << d << ", got " << vec_dim << endl;
                 return false;
             }
             
@@ -77,9 +135,15 @@ public:
             for (int j = 0; j < d; j++) {
                 data[i * d + j] = static_cast<float>(temp_vector[j]);
             }
+            
+            // 显示进度（每10%）
+            if (n > 1000 && i % (n / 10) == 0 && i > 0) {
+                cout << "  Progress: " << (i * 100 / n) << "%" << endl;
+            }
         }
         
         file.close();
+        cout << "  Successfully loaded " << n << " vectors" << endl;
         return true;
     }
 
@@ -96,6 +160,11 @@ public:
         size_t file_size = file.tellg();
         file.seekg(0, ios::beg);
         
+        if (file_size < sizeof(int)) {
+            cerr << "File too small: " << filename << endl;
+            return false;
+        }
+        
         // 读取第一个向量的维度
         int first_dim;
         file.read(reinterpret_cast<char*>(&first_dim), sizeof(int));
@@ -104,31 +173,76 @@ public:
             return false;
         }
         
+        // 验证维度的合理性
+        if (first_dim <= 0 || first_dim > 100000) {
+            cerr << "Invalid dimension: " << first_dim << " (expected 1-100000)" << endl;
+            cerr << "File may be corrupted or in wrong format: " << filename << endl;
+            return false;
+        }
+        
         d = first_dim;
         size_t bytes_per_vector = sizeof(int) + d * sizeof(float);
+        
+        // 验证文件大小
+        if (file_size % bytes_per_vector != 0) {
+            cerr << "File size mismatch. File size: " << file_size 
+                 << ", bytes per vector: " << bytes_per_vector << endl;
+            cerr << "File may be corrupted: " << filename << endl;
+            return false;
+        }
+        
         n = file_size / bytes_per_vector;
         
+        // 验证向量数量的合理性
+        if (n <= 0 || n > 1000000000) {
+            cerr << "Invalid number of vectors: " << n << endl;
+            return false;
+        }
+        
         cout << "Reading " << n << " vectors of dimension " << d << " from " << filename << endl;
+        
+        // 检查是否会分配过多内存（超过 50GB）
+        size_t total_size = static_cast<size_t>(n) * static_cast<size_t>(d) * sizeof(float);
+        size_t max_size = 100ULL * 1024 * 1024 * 1024;  // 100 GB
+        if (total_size > max_size) {
+            cerr << "Error: Would allocate too much memory: " 
+                 << (total_size / (1024.0 * 1024 * 1024)) << " GB" << endl;
+            cerr << "Maximum allowed: " << (max_size / (1024.0 * 1024 * 1024)) << " GB" << endl;
+            return false;
+        }
         
         // 重置文件指针
         file.seekg(0, ios::beg);
         
         // 预分配内存
-        data.resize(n * d);
+        try {
+            data.resize(n * d);
+        } catch (const std::bad_alloc& e) {
+            cerr << "Failed to allocate memory for " << n << " x " << d << " vectors" << endl;
+            cerr << "Required memory: " << (total_size / (1024.0 * 1024 * 1024)) << " GB" << endl;
+            return false;
+        }
         
         // 读取所有向量
         for (int i = 0; i < n; i++) {
             int vec_dim;
             file.read(reinterpret_cast<char*>(&vec_dim), sizeof(int));
             if (vec_dim != d) {
-                cerr << "Inconsistent dimension at vector " << i << endl;
+                cerr << "Inconsistent dimension at vector " << i 
+                     << ": expected " << d << ", got " << vec_dim << endl;
                 return false;
             }
             
             file.read(reinterpret_cast<char*>(&data[i * d]), d * sizeof(float));
+            
+            // 显示进度（每10%）
+            if (n > 1000 && i % (n / 10) == 0 && i > 0) {
+                cout << "  Progress: " << (i * 100 / n) << "%" << endl;
+            }
         }
         
         file.close();
+        cout << "  Successfully loaded " << n << " vectors" << endl;
         return true;
     }
     
@@ -215,8 +329,72 @@ public:
         return sum;
     }
     
-    // 选择最佳的距离计算函数
-    inline float compute_distance(const float* a, const float* b, int dimension) {
+    // ==================== Inner Product (内积) 计算 ====================
+    
+    // SIMD加速的内积计算 (AVX2)
+    inline float simd_inner_product_avx2(const float* a, const float* b, int dimension) {
+        __m256 sum = _mm256_setzero_ps();
+        int simd_end = dimension - (dimension % 8);
+        
+        // 处理8个float的倍数部分
+        for (int i = 0; i < simd_end; i += 8) {
+            __m256 va = _mm256_loadu_ps(&a[i]);
+            __m256 vb = _mm256_loadu_ps(&b[i]);
+            sum = _mm256_fmadd_ps(va, vb, sum);  // sum += va * vb
+        }
+        
+        // 水平求和
+        float result[8];
+        _mm256_storeu_ps(result, sum);
+        float total = result[0] + result[1] + result[2] + result[3] + 
+                     result[4] + result[5] + result[6] + result[7];
+        
+        // 处理剩余元素
+        for (int i = simd_end; i < dimension; i++) {
+            total += a[i] * b[i];
+        }
+        
+        return total;
+    }
+    
+    // SSE版本的内积
+    inline float simd_inner_product_sse(const float* a, const float* b, int dimension) {
+        __m128 sum = _mm_setzero_ps();
+        int simd_end = dimension - (dimension % 4);
+        
+        // 处理4个float的倍数部分
+        for (int i = 0; i < simd_end; i += 4) {
+            __m128 va = _mm_loadu_ps(&a[i]);
+            __m128 vb = _mm_loadu_ps(&b[i]);
+            sum = _mm_add_ps(sum, _mm_mul_ps(va, vb));
+        }
+        
+        // 水平求和
+        float result[4];
+        _mm_storeu_ps(result, sum);
+        float total = result[0] + result[1] + result[2] + result[3];
+        
+        // 处理剩余元素
+        for (int i = simd_end; i < dimension; i++) {
+            total += a[i] * b[i];
+        }
+        
+        return total;
+    }
+    
+    // 普通版本的内积
+    inline float inner_product(const float* a, const float* b, int dimension) {
+        float sum = 0.0f;
+        for (int i = 0; i < dimension; i++) {
+            sum += a[i] * b[i];
+        }
+        return sum;
+    }
+    
+    // ==================== 统一的距离计算接口 ====================
+    
+    // 选择最佳的L2距离计算函数
+    inline float compute_l2_distance(const float* a, const float* b, int dimension) {
         #ifdef __AVX2__
             return simd_l2_distance_avx2(a, b, dimension);
         #elif defined(__SSE__)
@@ -226,22 +404,47 @@ public:
         #endif
     }
     
+    // 选择最佳的内积计算函数
+    inline float compute_inner_product(const float* a, const float* b, int dimension) {
+        #ifdef __AVX2__
+            return simd_inner_product_avx2(a, b, dimension);
+        #elif defined(__SSE__)
+            return simd_inner_product_sse(a, b, dimension);
+        #else
+            return inner_product(a, b, dimension);
+        #endif
+    }
+    
+    // 根据metric类型选择距离计算函数
+    inline float compute_distance(const float* a, const float* b, int dimension, DistanceMetric metric) {
+        if (metric == L2) {
+            return compute_l2_distance(a, b, dimension);
+        } else {
+            return compute_inner_product(a, b, dimension);
+        }
+    }
+    
     // 使用优先队列的top-k算法
-    vector<int> find_topk_heap(const float* query, int k) {
+    vector<int> find_topk_heap(const float* query, int k, DistanceMetric metric) {
         priority_queue<Result> heap;
         
         // 先填满堆
         for (int i = 0; i < min(k, nb); i++) {
-            float dist = compute_distance(query, &base_data[i * dim], dim);
-            heap.push({dist, i});
+            float dist = compute_distance(query, &base_data[i * dim], dim, metric);
+            heap.push({dist, i, metric});
         }
         
         // 处理剩余的点
         for (int i = k; i < nb; i++) {
-            float dist = compute_distance(query, &base_data[i * dim], dim);
-            if (dist < heap.top().dist) {
+            float dist = compute_distance(query, &base_data[i * dim], dim, metric);
+            
+            // 对于L2：dist < heap.top().dist 表示更近
+            // 对于IP：dist > heap.top().dist 表示更相似
+            bool should_update = (metric == L2) ? (dist < heap.top().dist) : (dist > heap.top().dist);
+            
+            if (should_update) {
                 heap.pop();
-                heap.push({dist, i});
+                heap.push({dist, i, metric});
             }
         }
         
@@ -252,9 +455,9 @@ public:
             heap.pop();
         }
         
-        // 按距离从小到大排序
-        sort(results.begin(), results.end(), [](const Result& a, const Result& b) {
-            return a.dist < b.dist;
+        // 排序：L2按距离从小到大，IP按相似度从大到小
+        sort(results.begin(), results.end(), [metric](const Result& a, const Result& b) {
+            return (metric == L2) ? (a.dist < b.dist) : (a.dist > b.dist);
         });
         
         vector<int> indices;
@@ -266,23 +469,32 @@ public:
     }
     
     // 使用部分排序的top-k算法（对于小k值更高效）
-    vector<int> find_topk_partial_sort(const float* query, int k) {
+    vector<int> find_topk_partial_sort(const float* query, int k, DistanceMetric metric) {
         vector<Result> all_results;
         all_results.reserve(nb);
         
         // 计算所有距离
         for (int i = 0; i < nb; i++) {
-            float dist = compute_distance(query, &base_data[i * dim], dim);
-            all_results.push_back({dist, i});
+            float dist = compute_distance(query, &base_data[i * dim], dim, metric);
+            all_results.push_back({dist, i, metric});
         }
         
         // 部分排序
-        nth_element(all_results.begin(), all_results.begin() + k - 1, all_results.end(),
-                   [](const Result& a, const Result& b) { return a.dist < b.dist; });
-        
-        // 对前k个元素排序
-        sort(all_results.begin(), all_results.begin() + k,
-             [](const Result& a, const Result& b) { return a.dist < b.dist; });
+        if (metric == L2) {
+            // L2: 选择最小的k个
+            nth_element(all_results.begin(), all_results.begin() + k - 1, all_results.end(),
+                       [](const Result& a, const Result& b) { return a.dist < b.dist; });
+            // 对前k个元素排序（从小到大）
+            sort(all_results.begin(), all_results.begin() + k,
+                 [](const Result& a, const Result& b) { return a.dist < b.dist; });
+        } else {
+            // IP: 选择最大的k个
+            nth_element(all_results.begin(), all_results.begin() + k - 1, all_results.end(),
+                       [](const Result& a, const Result& b) { return a.dist > b.dist; });
+            // 对前k个元素排序（从大到小）
+            sort(all_results.begin(), all_results.begin() + k,
+                 [](const Result& a, const Result& b) { return a.dist > b.dist; });
+        }
         
         vector<int> indices;
         for (int i = 0; i < k; i++) {
@@ -293,7 +505,7 @@ public:
     }
     
     // 分块处理版本（内存友好）
-    vector<int> find_topk_chunked(const float* query, int k, int chunk_size = 10000) {
+    vector<int> find_topk_chunked(const float* query, int k, DistanceMetric metric, int chunk_size = 10000) {
         priority_queue<Result> global_heap;
         
         for (int start = 0; start < nb; start += chunk_size) {
@@ -301,13 +513,19 @@ public:
             
             // 处理当前块
             for (int i = start; i < end; i++) {
-                float dist = compute_distance(query, &base_data[i * dim], dim);
+                float dist = compute_distance(query, &base_data[i * dim], dim, metric);
                 
                 if (global_heap.size() < static_cast<size_t>(k)) {
-                    global_heap.push({dist, i});
-                } else if (dist < global_heap.top().dist) {
-                    global_heap.pop();
-                    global_heap.push({dist, i});
+                    global_heap.push({dist, i, metric});
+                } else {
+                    // 对于L2：dist < heap.top().dist 表示更近
+                    // 对于IP：dist > heap.top().dist 表示更相似
+                    bool should_update = (metric == L2) ? (dist < global_heap.top().dist) : (dist > global_heap.top().dist);
+                    
+                    if (should_update) {
+                        global_heap.pop();
+                        global_heap.push({dist, i, metric});
+                    }
                 }
             }
         }
@@ -319,8 +537,9 @@ public:
             global_heap.pop();
         }
         
-        sort(results.begin(), results.end(), [](const Result& a, const Result& b) {
-            return a.dist < b.dist;
+        // 排序：L2按距离从小到大，IP按相似度从大到小
+        sort(results.begin(), results.end(), [metric](const Result& a, const Result& b) {
+            return (metric == L2) ? (a.dist < b.dist) : (a.dist > b.dist);
         });
         
         vector<int> indices;
@@ -373,13 +592,14 @@ public:
         return true;
     }
     
-    bool compute_groundtruth(const string& output_file, int k = 100, int num_threads = 0) {
+    bool compute_groundtruth(const string& output_file, int k = 100, DistanceMetric metric = L2, int num_threads = 0) {
         if (num_threads <= 0) {
             num_threads = omp_get_max_threads();
         }
         omp_set_num_threads(num_threads);
         
         cout << "Computing groundtruth with k=" << k << " using " << num_threads << " threads..." << endl;
+        cout << "Distance metric: " << (metric == L2 ? "L2 (Euclidean)" : "IP (Inner Product)") << endl;
         
         // 检测SIMD支持
         #ifdef __AVX2__
@@ -403,9 +623,9 @@ public:
             const float* query = &query_data[i * dim];
             
             if (use_heap) {
-                results[i] = find_topk_heap(query, k);
+                results[i] = find_topk_heap(query, k, metric);
             } else {
-                results[i] = find_topk_partial_sort(query, k);
+                results[i] = find_topk_partial_sort(query, k, metric);
             }
             
             // 进度报告
@@ -431,16 +651,20 @@ public:
 void print_usage(const char* program_name) {
     cout << "Usage: " << program_name << " [options]" << endl;
     cout << "Options:" << endl;
-    cout << "  -b, --base <file>      Base vectors file (fvecs format)" << endl;
-    cout << "  -q, --query <file>     Query vectors file (fvecs format)" << endl;
+    cout << "  -b, --base <file>      Base vectors file (fvecs/bvecs format)" << endl;
+    cout << "  -q, --query <file>     Query vectors file (fvecs/bvecs format)" << endl;
     cout << "  -o, --output <file>    Output groundtruth file (ivecs format)" << endl;
     cout << "  -k, --topk <int>       Number of nearest neighbors (default: 100)" << endl;
+    cout << "  -m, --metric <type>    Distance metric: L2 or IP (default: L2)" << endl;
+    cout << "                         L2 = Euclidean distance" << endl;
+    cout << "                         IP = Inner Product (for normalized vectors)" << endl;
     cout << "  -t, --threads <int>    Number of threads (default: auto)" << endl;
     cout << "  -h, --help             Show this help message" << endl;
 }
 
 int main(int argc, char* argv[]) {
     string base_file, query_file, output_file;
+    string metric_str = "L2";
     int k = 100;
     int num_threads = 0;
     
@@ -449,6 +673,7 @@ int main(int argc, char* argv[]) {
         {"query", required_argument, 0, 'q'},
         {"output", required_argument, 0, 'o'},
         {"topk", required_argument, 0, 'k'},
+        {"metric", required_argument, 0, 'm'},
         {"threads", required_argument, 0, 't'},
         {"help", no_argument, 0, 'h'},
         {0, 0, 0, 0}
@@ -457,7 +682,7 @@ int main(int argc, char* argv[]) {
     int option_index = 0;
     int c;
     
-    while ((c = getopt_long(argc, argv, "b:q:o:k:t:h", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "b:q:o:k:m:t:h", long_options, &option_index)) != -1) {
         switch (c) {
             case 'b':
                 base_file = optarg;
@@ -471,6 +696,13 @@ int main(int argc, char* argv[]) {
             case 'k':
                 k = atoi(optarg);
                 break;
+            case 'm':
+                metric_str = optarg;
+                // 转换为大写
+                for (auto& ch : metric_str) {
+                    ch = toupper(ch);
+                }
+                break;
             case 't':
                 num_threads = atoi(optarg);
                 break;
@@ -481,6 +713,17 @@ int main(int argc, char* argv[]) {
                 print_usage(argv[0]);
                 return 1;
         }
+    }
+    
+    // 解析metric参数
+    DistanceMetric metric;
+    if (metric_str == "L2") {
+        metric = L2;
+    } else if (metric_str == "IP") {
+        metric = IP;
+    } else {
+        cerr << "Error: Invalid metric '" << metric_str << "'. Use 'L2' or 'IP'." << endl;
+        return 1;
     }
     
     if (base_file.empty() || query_file.empty() || output_file.empty()) {
@@ -499,6 +742,7 @@ int main(int argc, char* argv[]) {
     cout << "Query file: " << query_file << endl;
     cout << "Output file: " << output_file << endl;
     cout << "k: " << k << endl;
+    cout << "Metric: " << metric_str << " (" << (metric == L2 ? "Euclidean distance" : "Inner Product") << ")" << endl;
     cout << "Threads: " << (num_threads > 0 ? to_string(num_threads) : "auto") << endl;
     cout << endl;
     
@@ -509,7 +753,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    if (!computer.compute_groundtruth(output_file, k, num_threads)) {
+    if (!computer.compute_groundtruth(output_file, k, metric, num_threads)) {
         cerr << "Failed to compute groundtruth!" << endl;
         return 1;
     }

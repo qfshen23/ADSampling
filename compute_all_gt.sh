@@ -8,23 +8,21 @@ if [ ! -f "compute_gt" ]; then
     fi
 fi
 
-datasets=('spacev10m' 'bigann10m')
+datasets=('msmarco20m' 't2i50m')
 base_path=/data/vector_datasets
-
-echo "开始处理 2 个数据集..."
 
 for dataset in "${datasets[@]}"
 do 
     echo ""
     echo "=== 处理 $dataset ==="
     
-    base_file="$base_path/$dataset/${dataset}_base.bvecs"
-    query_file="$base_path/$dataset/${dataset}_query.bvecs"
+    base_file="$base_path/$dataset/${dataset}_base.fvecs"
+    query_file="$base_path/$dataset/${dataset}_query.fvecs"
     output_file="$base_path/$dataset/${dataset}_groundtruth.ivecs"
     
     if [[ -f "$base_file" && -f "$query_file" ]]; then
         echo "开始计算 $dataset groundtruth..."
-        time ./compute_gt -b "$base_file" -q "$query_file" -o "$output_file" -k 100 -t 32
+        time ./src/compute_gt -b "$base_file" -q "$query_file" -o "$output_file" -k 100 -t 16 -m IP
         
         if [ $? -eq 0 ]; then
             echo "✓ $dataset 完成"
