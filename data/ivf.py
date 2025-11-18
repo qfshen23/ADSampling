@@ -3,11 +3,18 @@ import faiss
 import struct
 import os
 
+# ============ 配置参数 ============
 source = '/data/vector_datasets/'
-datasets = ['msmarco20m']
-# the number of clusters
-K = 4096
+datasets = ['glove2m_normalized', 'word2vec_normalized']
 
+# 聚类数量
+K = 1024
+
+# 距离度量
+# 'L2': 欧氏距离（L2 distance）
+# 'IP': 内积（Inner Product，对于归一化向量等同于余弦相似度）
+metric = 'IP'
+# ==================================
 
 def read_vecs_fast(filename, show_progress=True):
     """
@@ -78,7 +85,6 @@ def read_vecs_fast(filename, show_progress=True):
     return vectors
 
 
-
 def read_vectors(filename, c_contiguous=True):
     return read_vecs_fast(filename, c_contiguous)
 
@@ -95,7 +101,11 @@ def to_fvecs(filename, data):
 if __name__ == '__main__':
 
     for dataset in datasets:
+        print("=" * 80)
         print(f"Clustering - {dataset}")
+        print(f"Metric: {metric}, K: {K}")
+        print("=" * 80)
+        
         # path
         path = os.path.join(source, dataset)
         
@@ -103,8 +113,8 @@ if __name__ == '__main__':
         data_path_fvecs = os.path.join(path, f'{dataset}_base.fvecs')
         data_path = data_path_fvecs
         
-        centroids_path = os.path.join(path, f'{dataset}_centroid_{K}.fvecs')
-        randomzized_cluster_path = os.path.join(path, f"{dataset}_centroid_{K}.fvecs")
+        # 根据 metric 命名聚类中心文件
+        centroids_path = os.path.join(path, f'{dataset}_centroid_{K}_{metric}.fvecs')
         # transformation_path = os.path.join(path, 'O.fvecs')
 
         # read data vectors (自动选择读取函数)
@@ -113,13 +123,35 @@ if __name__ == '__main__':
         # C = read_fvecs(centroids_path)
         D = X.shape[1]
         
+        print(f"数据维度: {D}, 向量数量: {X.shape[0]:,}")
         
-        # cluster data vectors
-        index = faiss.index_factory(D, f"IVF{K},Flat")
+        # 根据 metric 创建不同的索引
+        if metric == 'L2':
+            # L2 距离（欧氏距离）
+            print(f"使用 L2 (欧氏距离) 进行聚类")
+            quantizer = faiss.IndexFlatL2(D)
+            index = faiss.IndexIVFFlat(quantizer, D, K, faiss.METRIC_L2)
+        elif metric == 'IP':
+            # 内积距离（对于归一化向量等同于余弦相似度）
+            print(f"使用 IP (内积/余弦相似度) 进行聚类")
+            quantizer = faiss.IndexFlatIP(D)
+            index = faiss.IndexIVFFlat(quantizer, D, K, faiss.METRIC_INNER_PRODUCT)
+        else:
+            raise ValueError(f"不支持的 metric: {metric}，请使用 'L2' 或 'IP'")
+        
         index.verbose = True
+        print(f"开始训练聚类...")
         index.train(X)
+        print(f"聚类训练完成！")
+        
+        # 提取聚类中心
         centroids = index.quantizer.reconstruct_n(0, index.nlist)
+        print(f"提取了 {centroids.shape[0]} 个聚类中心")
+        
+        # 保存聚类中心
         to_fvecs(centroids_path, centroids)
+        print(f"✓ 聚类中心已保存到: {centroids_path}")
+        print()
 
         # randomized centroids
         # centroids = np.dot(C, P)
