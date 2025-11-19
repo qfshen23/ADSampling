@@ -21,7 +21,7 @@ enum DistanceMetric {
 // 结果对结构
 struct Result {
     float dist;
-    int id;
+    size_t id;  // 改为 size_t 支持大索引
     DistanceMetric metric;
     
     bool operator<(const Result& other) const {
@@ -39,11 +39,12 @@ class GroundTruthComputer {
 private:
     vector<float> base_data;
     vector<float> query_data;
-    int nb, nq, dim;
+    size_t nb, nq;  // 改为 size_t
+    int dim;        // 维度通常不会很大，保持 int
     
 public:
     // 读取bvecs格式文件
-    bool read_bvecs(const string& filename, vector<float>& data, int& n, int& d) {
+    bool read_bvecs(const string& filename, vector<float>& data, size_t& n, int& d) {
         ifstream file(filename, ios::binary);
         if (!file.is_open()) {
             cerr << "Cannot open file: " << filename << endl;
@@ -76,7 +77,7 @@ public:
         }
         
         d = first_dim;
-        size_t bytes_per_vector = sizeof(int) + d * sizeof(unsigned char);
+        size_t bytes_per_vector = sizeof(int) + static_cast<size_t>(d) * sizeof(unsigned char);
         
         // 验证文件大小
         if (file_size % bytes_per_vector != 0) {
@@ -88,16 +89,16 @@ public:
         
         n = file_size / bytes_per_vector;
         
-        // 验证向量数量的合理性
-        if (n <= 0 || n > 1000000000) {
+        // 验证向量数量的合理性 (支持最多 10 billion)
+        if (n == 0 || n > 10000000000ULL) {
             cerr << "Invalid number of vectors: " << n << endl;
             return false;
         }
         
         cout << "Reading " << n << " vectors of dimension " << d << " from " << filename << endl;
         
-        // 检查是否会分配过多内存（超过 50GB）
-        size_t total_size = static_cast<size_t>(n) * static_cast<size_t>(d) * sizeof(float);
+        // 检查是否会分配过多内存（超过 100GB）
+        size_t total_size = n * static_cast<size_t>(d) * sizeof(float);
         size_t max_size = 100ULL * 1024 * 1024 * 1024;  // 100 GB
         if (total_size > max_size) {
             cerr << "Error: Would allocate too much memory: " 
@@ -111,7 +112,7 @@ public:
         
         // 预分配内存
         try {
-            data.resize(n * d);
+            data.resize(n * static_cast<size_t>(d));
         } catch (const std::bad_alloc& e) {
             cerr << "Failed to allocate memory for " << n << " x " << d << " vectors" << endl;
             cerr << "Required memory: " << (total_size / (1024.0 * 1024 * 1024)) << " GB" << endl;
@@ -121,7 +122,7 @@ public:
         vector<unsigned char> temp_vector(d);
         
         // 读取所有向量
-        for (int i = 0; i < n; i++) {
+        for (size_t i = 0; i < n; i++) {
             int vec_dim;
             file.read(reinterpret_cast<char*>(&vec_dim), sizeof(int));
             if (vec_dim != d) {
@@ -132,8 +133,9 @@ public:
             
             // 读取byte数据并转换为float
             file.read(reinterpret_cast<char*>(temp_vector.data()), d * sizeof(unsigned char));
+            size_t offset = i * static_cast<size_t>(d);
             for (int j = 0; j < d; j++) {
-                data[i * d + j] = static_cast<float>(temp_vector[j]);
+                data[offset + j] = static_cast<float>(temp_vector[j]);
             }
             
             // 显示进度（每10%）
@@ -148,7 +150,7 @@ public:
     }
 
     // 读取fvecs格式文件
-    bool read_fvecs(const string& filename, vector<float>& data, int& n, int& d) {
+    bool read_fvecs(const string& filename, vector<float>& data, size_t& n, int& d) {
         ifstream file(filename, ios::binary);
         if (!file.is_open()) {
             cerr << "Cannot open file: " << filename << endl;
@@ -181,7 +183,7 @@ public:
         }
         
         d = first_dim;
-        size_t bytes_per_vector = sizeof(int) + d * sizeof(float);
+        size_t bytes_per_vector = sizeof(int) + static_cast<size_t>(d) * sizeof(float);
         
         // 验证文件大小
         if (file_size % bytes_per_vector != 0) {
@@ -193,16 +195,16 @@ public:
         
         n = file_size / bytes_per_vector;
         
-        // 验证向量数量的合理性
-        if (n <= 0 || n > 1000000000) {
+        // 验证向量数量的合理性 (支持最多 10 billion)
+        if (n == 0 || n > 10000000000ULL) {
             cerr << "Invalid number of vectors: " << n << endl;
             return false;
         }
         
         cout << "Reading " << n << " vectors of dimension " << d << " from " << filename << endl;
         
-        // 检查是否会分配过多内存（超过 50GB）
-        size_t total_size = static_cast<size_t>(n) * static_cast<size_t>(d) * sizeof(float);
+        // 检查是否会分配过多内存（超过 100GB）
+        size_t total_size = n * static_cast<size_t>(d) * sizeof(float);
         size_t max_size = 100ULL * 1024 * 1024 * 1024;  // 100 GB
         if (total_size > max_size) {
             cerr << "Error: Would allocate too much memory: " 
@@ -216,7 +218,7 @@ public:
         
         // 预分配内存
         try {
-            data.resize(n * d);
+            data.resize(n * static_cast<size_t>(d));
         } catch (const std::bad_alloc& e) {
             cerr << "Failed to allocate memory for " << n << " x " << d << " vectors" << endl;
             cerr << "Required memory: " << (total_size / (1024.0 * 1024 * 1024)) << " GB" << endl;
@@ -224,7 +226,7 @@ public:
         }
         
         // 读取所有向量
-        for (int i = 0; i < n; i++) {
+        for (size_t i = 0; i < n; i++) {
             int vec_dim;
             file.read(reinterpret_cast<char*>(&vec_dim), sizeof(int));
             if (vec_dim != d) {
@@ -233,7 +235,8 @@ public:
                 return false;
             }
             
-            file.read(reinterpret_cast<char*>(&data[i * d]), d * sizeof(float));
+            size_t offset = i * static_cast<size_t>(d);
+            file.read(reinterpret_cast<char*>(&data[offset]), d * sizeof(float));
             
             // 显示进度（每10%）
             if (n > 1000 && i % (n / 10) == 0 && i > 0) {
@@ -247,7 +250,7 @@ public:
     }
     
     // 写入ivecs格式文件
-    bool write_ivecs(const string& filename, const vector<vector<int>>& results) {
+    bool write_ivecs(const string& filename, const vector<vector<size_t>>& results) {
         ofstream file(filename, ios::binary);
         if (!file.is_open()) {
             cerr << "Cannot open file for writing: " << filename << endl;
@@ -257,7 +260,11 @@ public:
         for (const auto& result : results) {
             int k = result.size();
             file.write(reinterpret_cast<const char*>(&k), sizeof(int));
-            file.write(reinterpret_cast<const char*>(result.data()), k * sizeof(int));
+            // 将 size_t 转换为 int 写入（groundtruth 文件格式要求）
+            for (size_t idx : result) {
+                int idx_int = static_cast<int>(idx);
+                file.write(reinterpret_cast<const char*>(&idx_int), sizeof(int));
+            }
         }
         
         file.close();
@@ -425,18 +432,20 @@ public:
     }
     
     // 使用优先队列的top-k算法
-    vector<int> find_topk_heap(const float* query, int k, DistanceMetric metric) {
+    vector<size_t> find_topk_heap(const float* query, int k, DistanceMetric metric) {
         priority_queue<Result> heap;
         
         // 先填满堆
-        for (int i = 0; i < min(k, nb); i++) {
-            float dist = compute_distance(query, &base_data[i * dim], dim, metric);
+        for (size_t i = 0; i < static_cast<size_t>(min(k, static_cast<int>(nb))); i++) {
+            size_t offset = i * static_cast<size_t>(dim);
+            float dist = compute_distance(query, &base_data[offset], dim, metric);
             heap.push({dist, i, metric});
         }
         
         // 处理剩余的点
-        for (int i = k; i < nb; i++) {
-            float dist = compute_distance(query, &base_data[i * dim], dim, metric);
+        for (size_t i = k; i < nb; i++) {
+            size_t offset = i * static_cast<size_t>(dim);
+            float dist = compute_distance(query, &base_data[offset], dim, metric);
             
             // 对于L2：dist < heap.top().dist 表示更近
             // 对于IP：dist > heap.top().dist 表示更相似
@@ -460,7 +469,7 @@ public:
             return (metric == L2) ? (a.dist < b.dist) : (a.dist > b.dist);
         });
         
-        vector<int> indices;
+        vector<size_t> indices;
         for (const auto& r : results) {
             indices.push_back(r.id);
         }
@@ -469,13 +478,14 @@ public:
     }
     
     // 使用部分排序的top-k算法（对于小k值更高效）
-    vector<int> find_topk_partial_sort(const float* query, int k, DistanceMetric metric) {
+    vector<size_t> find_topk_partial_sort(const float* query, int k, DistanceMetric metric) {
         vector<Result> all_results;
         all_results.reserve(nb);
         
         // 计算所有距离
-        for (int i = 0; i < nb; i++) {
-            float dist = compute_distance(query, &base_data[i * dim], dim, metric);
+        for (size_t i = 0; i < nb; i++) {
+            size_t offset = i * static_cast<size_t>(dim);
+            float dist = compute_distance(query, &base_data[offset], dim, metric);
             all_results.push_back({dist, i, metric});
         }
         
@@ -496,7 +506,7 @@ public:
                  [](const Result& a, const Result& b) { return a.dist > b.dist; });
         }
         
-        vector<int> indices;
+        vector<size_t> indices;
         for (int i = 0; i < k; i++) {
             indices.push_back(all_results[i].id);
         }
@@ -505,15 +515,16 @@ public:
     }
     
     // 分块处理版本（内存友好）
-    vector<int> find_topk_chunked(const float* query, int k, DistanceMetric metric, int chunk_size = 10000) {
+    vector<size_t> find_topk_chunked(const float* query, int k, DistanceMetric metric, size_t chunk_size = 10000) {
         priority_queue<Result> global_heap;
         
-        for (int start = 0; start < nb; start += chunk_size) {
-            int end = min(start + chunk_size, nb);
+        for (size_t start = 0; start < nb; start += chunk_size) {
+            size_t end = min(start + chunk_size, nb);
             
             // 处理当前块
-            for (int i = start; i < end; i++) {
-                float dist = compute_distance(query, &base_data[i * dim], dim, metric);
+            for (size_t i = start; i < end; i++) {
+                size_t offset = i * static_cast<size_t>(dim);
+                float dist = compute_distance(query, &base_data[offset], dim, metric);
                 
                 if (global_heap.size() < static_cast<size_t>(k)) {
                     global_heap.push({dist, i, metric});
@@ -542,7 +553,7 @@ public:
             return (metric == L2) ? (a.dist < b.dist) : (a.dist > b.dist);
         });
         
-        vector<int> indices;
+        vector<size_t> indices;
         for (const auto& r : results) {
             indices.push_back(r.id);
         }
@@ -559,6 +570,8 @@ public:
     bool load_data(const string& base_file, const string& query_file) {
         cout << "Loading base vectors..." << endl;
         bool success;
+        int query_dim;
+        
         if (is_bvecs_format(base_file)) {
             success = read_bvecs(base_file, base_data, nb, dim);
         } else {
@@ -570,7 +583,6 @@ public:
         }
         
         cout << "Loading query vectors..." << endl;
-        int query_dim;
         if (is_bvecs_format(query_file)) {
             success = read_bvecs(query_file, query_data, nq, query_dim);
         } else {
@@ -610,17 +622,18 @@ public:
             cout << "Using standard computation (no SIMD)" << endl;
         #endif
         
-        vector<vector<int>> results(nq);
+        vector<vector<size_t>> results(nq);
         
         auto start_time = high_resolution_clock::now();
         
         // 选择算法
-        bool use_heap = (k <= nb / 100);  // 对于小k值使用堆
+        bool use_heap = (k <= static_cast<int>(nb) / 100);  // 对于小k值使用堆
         cout << "Using " << (use_heap ? "heap-based" : "partial-sort") << " algorithm" << endl;
         
         #pragma omp parallel for schedule(dynamic, 1)
-        for (int i = 0; i < nq; i++) {
-            const float* query = &query_data[i * dim];
+        for (size_t i = 0; i < nq; i++) {
+            size_t offset = i * static_cast<size_t>(dim);
+            const float* query = &query_data[offset];
             
             if (use_heap) {
                 results[i] = find_topk_heap(query, k, metric);

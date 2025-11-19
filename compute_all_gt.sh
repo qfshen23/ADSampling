@@ -8,7 +8,7 @@ if [ ! -f "compute_gt" ]; then
     fi
 fi
 
-datasets=('msmarco20m' 't2i50m')
+datasets=('t2i50m')
 base_path=/data/vector_datasets
 
 for dataset in "${datasets[@]}"
@@ -22,7 +22,7 @@ do
     
     if [[ -f "$base_file" && -f "$query_file" ]]; then
         echo "开始计算 $dataset groundtruth..."
-        time ./src/compute_gt -b "$base_file" -q "$query_file" -o "$output_file" -k 100 -t 16 -m IP
+        time ./src/compute_gt -b "$base_file" -q "$query_file" -o "$output_file" -k 100 -t 24 -m IP
         
         if [ $? -eq 0 ]; then
             echo "✓ $dataset 完成"
