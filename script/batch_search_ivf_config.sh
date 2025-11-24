@@ -34,7 +34,7 @@ mkdir -p ${result_path}
 
 K=10
 k_overlap=64
-randomize=1
+randomize=0
 
 echo "======================================"
 echo "批量测试配置"
